@@ -1,0 +1,1680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YetAnotherSON</title>
+<style>
+  :root{
+    --bg-app:#12151b; --bg-panel:#181c24; --bg-panel-alt:#1f2430; --bg-row-hover:#242a37;
+    --border:#2b313d; --text:#e7eaee; --text-muted:#8c93a3; --text-faint:#565e6d; --scrollbar:#2a303c;
+    --accent:#ffb454; --accent-dim:#5a4526; --danger:#e8607a;
+    --mono: ui-monospace,"JetBrains Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{background:var(--bg-app);color:var(--text);font-family:var(--sans);display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+  header{padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0;flex-wrap:wrap;}
+  .title-block{display:flex;align-items:baseline;gap:0px;}
+  input.filename-input{background:transparent;border:none;border-bottom:1px solid transparent;color:var(--text);font-size:16px;font-weight:600;font-family:var(--mono);padding:2px 0;width:255px;min-width:40px;}
+  input.filename-input:focus{outline:none;border-bottom:1px solid var(--accent);}
+  .ext{color:var(--text-faint);font-family:var(--mono);font-size:13px;}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  button{font-family:var(--sans);font-size:12.5px;background:var(--bg-panel-alt);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 12px;cursor:pointer;transition:border-color .12s,background .12s;}
+  button:hover{background:var(--bg-row-hover);border-color:#3a4150;}
+  button:active{transform:translateY(1px);}
+  button:disabled{opacity:.35;cursor:default;}
+  button:disabled:hover{background:var(--bg-panel-alt);}
+  button.primary{border-color:var(--accent);color:var(--accent);}
+  button.primary:hover{background:var(--accent-dim);}
+  button.ghost{background:transparent;border-color:transparent;color:var(--text-muted);}
+  button.ghost:hover{color:var(--text);background:var(--bg-row-hover);}
+  button.small{padding:3px 8px;font-size:11px;border-radius:5px;}
+  button.icon-btn{padding:7px 10px;font-size:15px;line-height:1;}
+  .divider{width:1px;height:20px;background:var(--border);margin:0 2px;}
+  input[type=file]{display:none;}
+
+  .breadcrumb-row{padding:8px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:2px;font-family:var(--mono);font-size:12px;color:var(--text-muted);flex-shrink:0;min-height:34px;flex-wrap:wrap;}
+  .crumb{padding:3px 7px;border-radius:4px;color:var(--accent);cursor:pointer;background:transparent;border:none;font-family:var(--mono);font-size:12px;}
+  .crumb:hover{background:var(--bg-row-hover);text-decoration:underline;}
+  .crumb-sep{color:var(--text-faint);padding:0 2px;}
+  .trace{height:2px;flex:1;min-width:40px;background:linear-gradient(90deg,var(--accent-dim),var(--border) 40%);border-radius:2px;margin-left:6px;}
+
+  .columns{flex:1;display:flex;overflow-x:auto;overflow-y:hidden;position:relative;}
+  .col{width:310px;min-width:180px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg-panel);position:relative;}
+  .col-resize-handle{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:5;}
+  .col-resize-handle:hover, .col-resize-handle.dragging{background:var(--col-accent, var(--accent));opacity:.55;}
+  .col-head{padding:10px 12px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  .col-head .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--col-accent, var(--accent));}
+  .col-head .count{font-size:10px;color:var(--text-faint);font-family:var(--mono);}
+  .col-body{flex:1;overflow-y:auto;padding:6px;}
+  .col-empty{padding:24px 16px;color:var(--text-faint);font-size:12.5px;line-height:1.5;text-align:center;}
+
+  .row-card{border:1px solid var(--border);border-left:3px solid transparent;border-radius:6px;padding:8px 9px;margin-bottom:6px;cursor:grab;background:var(--bg-panel);transition:background .12s,border-color .12s;}
+  .row-card:hover{background:var(--bg-row-hover);}
+  .row-card.selected{background:var(--bg-row-hover);border-left-color:var(--col-accent, var(--accent));}
+  .row-top{display:flex;align-items:center;gap:6px;}
+  .row-card input.title-input{flex:1;min-width:0;background:transparent;border:none;color:var(--text);font-size:13px;font-family:var(--sans);padding:2px 0;}
+  .row-card input.title-input:focus{outline:none;border-bottom:1px solid var(--accent);}
+  .row-card input.key-input{width:100%;background:transparent;border:none;color:var(--text-muted);font-family:var(--mono);font-size:10.5px;padding:1px 0 0;margin-top:2px;}
+  .row-card input.key-input:focus{outline:none;color:var(--text);}
+  .row-card .addr-badge{font-family:var(--mono);font-size:10px;color:var(--text-faint);background:var(--bg-panel-alt);border-radius:4px;padding:1px 5px;flex-shrink:0;}
+
+  .col-footer{padding:8px;border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;gap:6px;}
+  .col-footer button{width:100%;}
+  .add-form{display:none;flex-direction:column;gap:6px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-panel-alt);}
+  .add-form.show{display:flex;}
+  .add-form input,.add-form select{background:var(--bg-panel);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 7px;font-size:12px;font-family:var(--sans);}
+
+  .prop-row{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:6px;padding:6px 7px;margin-bottom:6px;background:var(--bg-panel);cursor:grab;}
+  .prop-row input.prop-key{width:20%;min-width:0;background:transparent;border:none;color:var(--text-muted);font-family:var(--mono);font-size:11px;}
+  .prop-row input.prop-key:focus{outline:none;color:var(--text);}
+  .prop-row input.prop-value{flex:1;min-width:0;background:var(--bg-panel-alt);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 7px;font-size:12px;font-family:var(--mono);}
+  .prop-row input.prop-value:focus{outline:none;border-color:#b48ead;}
+  .prop-row .open-btn{flex:1;min-width:0;text-align:left;background:var(--bg-panel-alt);border:1px solid var(--border);color:var(--text);font-size:11.5px;padding:5px 8px;border-radius:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .prop-row .open-btn:hover{background:var(--bg-row-hover);}
+
+  .type-select{flex-shrink:0;width:56px;font-family:var(--mono);font-size:10px;font-weight:700;text-align:center;border-radius:5px;border:1px solid var(--border);padding:5px 2px;cursor:pointer;}
+  .row-top .type-select{width:52px;}
+
+  .ctx-menu{position:fixed;display:none;flex-direction:column;background:var(--bg-panel-alt);border:1px solid var(--border);border-radius:7px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:100;min-width:180px;overflow:hidden;padding:4px;}
+  .ctx-menu.show{display:flex;}
+  .ctx-menu button{border:none;background:transparent;text-align:left;border-radius:5px;padding:7px 9px;font-size:12.5px;}
+  .ctx-menu button:hover{background:var(--bg-row-hover);}
+  .ctx-menu button.danger{color:var(--danger);}
+  .ctx-menu hr{border:none;border-top:1px solid var(--border);margin:4px 2px;width:100%;}
+
+  .overlay{position:fixed;inset:0;background:rgba(8,9,12,.7);display:none;align-items:center;justify-content:center;z-index:60;}
+  .overlay.show{display:flex;}
+  .overlay-panel{width:min(760px,90vw);height:min(640px,85vh);min-width:340px;min-height:220px;max-width:96vw;max-height:96vh;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;overflow:auto;resize:both;}
+  .overlay-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  .overlay-head h2{font-size:13px;margin:0;font-weight:600;}
+  .raw-wrap{position:relative;flex:1;min-height:0;background:var(--bg-panel-alt);}
+  .raw-wrap pre.raw-highlight,
+  textarea.raw-area{
+    position:absolute;inset:0;margin:0;border:none;font-family:var(--mono);font-size:12px;padding:14px;
+    line-height:1.5;white-space:pre-wrap;word-break:break-word;overflow:auto;box-sizing:border-box;tab-size:2;
+  }
+  pre.raw-highlight{color:var(--text);pointer-events:none;}
+  textarea.raw-area{background:transparent;color:transparent;caret-color:var(--text);resize:none;}
+  textarea.raw-area::selection{background:rgba(255,255,255,.25);}
+  textarea.raw-area:focus{outline:none;}
+  .jk{color:var(--accent);} .js{color:var(--hl-string,#5ec8d8);} .jn{color:var(--hl-number,#ffb454);}
+  .jb{color:var(--hl-boolean,#b48ead);} .jnull{color:var(--hl-null,#8c93a3);}
+  .overlay-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;}
+  .confirm-panel{width:380px;height:auto;min-width:280px;min-height:0;resize:none;max-width:92vw;}
+  .about-panel{width:420px;}
+  .about-body{display:flex;flex-direction:column;gap:10px;}
+  .about-title-row{display:flex;align-items:baseline;gap:8px;}
+  .about-title{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent);}
+  .about-version{font-family:var(--mono);font-size:11px;color:var(--text-faint);background:var(--bg-panel-alt);border:1px solid var(--border);border-radius:4px;padding:2px 6px;}
+  .about-tagline{font-size:12.5px;color:var(--text-muted);line-height:1.5;}
+  .about-row{display:flex;gap:8px;font-size:12.5px;}
+  .about-row .about-label{width:80px;flex-shrink:0;color:var(--text-faint);text-transform:uppercase;font-size:10.5px;letter-spacing:.06em;padding-top:2px;}
+  .about-row a{color:var(--col-accent, var(--accent));word-break:break-all;}
+  .about-shortcuts{border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:5px;}
+  .about-formats{border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:5px;}
+  .about-format-text{font-size:11.5px;color:var(--text-muted);line-height:1.5;}
+  .about-attr-row{display:flex;align-items:baseline;gap:8px;font-size:12px;}
+  .about-attr-row a{color:var(--col-accent, var(--accent));}
+  .about-attr-row span{color:var(--text-faint);font-size:11px;}
+  .about-kbd-row{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);}
+  .about-kbd-row span{margin-left:4px;}
+  kbd{font-family:var(--mono);font-size:10.5px;background:var(--bg-panel-alt);border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--text);}
+  .about-note{font-size:11.5px;color:var(--text-faint);line-height:1.5;border-top:1px solid var(--border);padding-top:10px;margin-top:2px;}
+  .confirm-body{padding:16px;font-size:13px;line-height:1.5;color:var(--text);}
+  .raw-error{color:var(--danger);font-size:12px;font-family:var(--mono);}
+
+  /* settings: floating, non-dimming dock so live color changes stay visible */
+  .settings-dock{position:fixed;top:64px;right:18px;width:320px;max-height:calc(100vh - 90px);z-index:70;display:none;pointer-events:none;}
+  .settings-dock.show{display:block;}
+  .settings-card{pointer-events:auto;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.45);display:flex;flex-direction:column;max-height:calc(100vh - 90px);overflow:hidden;}
+  .settings-body{padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
+  .settings-section-title{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);margin-top:6px;}
+  .color-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .color-row label{font-size:12px;color:var(--text);flex:1;}
+  .toggle-row{display:flex;align-items:center;gap:8px;}
+  .toggle-row label{font-size:12.5px;}
+  .theme-switch{display:flex;gap:6px;}
+  .theme-switch button{flex:1;}
+  .theme-switch button.active{border-color:var(--accent);color:var(--accent);}
+
+  /* custom color picker */
+  .cp-wrap{position:relative;display:inline-flex;align-items:center;gap:6px;}
+  .cp-swatch{width:32px;height:28px;border-radius:6px;border:1px solid var(--border);cursor:pointer;padding:0;flex-shrink:0;}
+  .cp-hex{width:76px;background:var(--bg-panel-alt);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 6px;font-family:var(--mono);font-size:11.5px;text-transform:uppercase;}
+  .cp-popover{position:absolute;top:34px;right:0;z-index:120;background:var(--bg-panel-alt);border:1px solid var(--border);border-radius:8px;padding:10px;display:none;box-shadow:0 8px 24px rgba(0,0,0,.45);}
+  .cp-popover.show{display:block;}
+  .cp-svbox{width:150px;height:110px;position:relative;border-radius:6px;overflow:hidden;cursor:crosshair;}
+  .cp-svwhite{position:absolute;inset:0;background:linear-gradient(to right,#fff,rgba(255,255,255,0));}
+  .cp-svblack{position:absolute;inset:0;background:linear-gradient(to top,#000,rgba(0,0,0,0));}
+  .cp-svcursor{position:absolute;width:10px;height:10px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.6);transform:translate(-50%,-50%);pointer-events:none;}
+  .cp-hue{width:150px;height:13px;border-radius:7px;margin-top:9px;position:relative;cursor:pointer;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);}
+  .cp-huehandle{position:absolute;top:-3px;width:9px;height:19px;border:2px solid #fff;border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,.6);transform:translate(-50%,0);pointer-events:none;}
+
+  .legend{padding:6px 20px;border-bottom:1px solid var(--border);display:flex;gap:14px;flex-wrap:wrap;font-size:10.5px;color:var(--text-muted);flex-shrink:0;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
+
+  .dropzone{position:fixed;inset:0;background:rgba(18,21,27,.88);z-index:80;display:none;align-items:center;justify-content:center;}
+  .dropzone.show{display:flex;}
+  .dropzone-inner{border:2px dashed var(--accent);border-radius:14px;padding:50px 70px;color:var(--accent);font-size:15px;font-family:var(--mono);}
+
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:var(--scrollbar);border-radius:6px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title-block">
+    <input id="fileNameInput" class="filename-input" value="YetAnotherSON" spellcheck="false">
+    <span class="ext">.json</span>
+  </div>
+  <div class="toolbar">
+    <input type="file" id="fileInput" accept=".json,.yaml,.yml,.toml">
+    <button class="ghost" id="btnNew">New</button>
+    <button class="ghost" id="btnOpen">Open</button>
+    <div class="divider"></div>
+    <button class="ghost" id="btnUndo" title="Ctrl+Z">↺ Undo</button>
+    <button class="ghost" id="btnRedo" title="Ctrl+Shift+Z">↻ Redo</button>
+    <div class="divider"></div>
+    <button class="ghost" id="btnRaw">Raw JSON</button>
+    <div class="divider"></div>
+    <button id="btnSave">Save</button>
+    <button class="ghost" id="btnSaveAs">Save As</button>
+    <button class="ghost" id="btnSaveYaml">Save YAML</button>
+    <button class="ghost" id="btnSaveToml">Save TOML</button>
+    <div class="divider"></div>
+    <button class="ghost icon-btn" id="btnAbout" title="About">ⓘ</button>
+    <button class="ghost icon-btn" id="btnSettings" title="Settings">⚙</button>
+  </div>
+</header>
+
+<div class="legend" id="legend"></div>
+<div class="breadcrumb-row" id="breadcrumb"></div>
+<div class="columns" id="columns"></div>
+<div class="ctx-menu" id="ctxMenu"></div>
+<div class="dropzone" id="dropzone"><div class="dropzone-inner">Drop a .json / .yaml / .toml file to open it</div></div>
+
+<div class="overlay" id="rawOverlay">
+  <div class="overlay-panel" id="rawPanel">
+    <div class="overlay-head"><h2>Raw JSON — edit directly, then apply</h2><button class="ghost small" id="btnRawClose">Close</button></div>
+    <div class="raw-wrap">
+      <pre class="raw-highlight" id="rawHighlight" aria-hidden="true"></pre>
+      <textarea class="raw-area" id="rawArea" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+    </div>
+    <div class="overlay-foot">
+      <span class="raw-error" id="rawError"></span>
+      <div style="display:flex;gap:8px;"><button class="ghost" id="btnRawCopy">Copy</button><button class="primary" id="btnRawApply">Apply</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="aboutOverlay">
+  <div class="overlay-panel confirm-panel about-panel">
+    <div class="overlay-head"><h2>About</h2><button class="ghost small" id="btnAboutClose">Close</button></div>
+    <div class="confirm-body about-body">
+      <div class="about-title-row">
+        <span class="about-title" id="aboutTitle">YetAnotherSON</span>
+        <span class="about-version" id="aboutVersion"></span>
+      </div>
+      <div class="about-tagline">A Miller-column editor for nested JSON/YAML/TOML. Every layer — object, array, or plain value — gets its own panel, so you can browse and edit deeply nested data like a spreadsheet instead of scrolling through a giant flattened tree.</div>
+      <div class="about-row"><span class="about-label">Released</span><span id="aboutDate"></span></div>
+      <div class="about-row"><span class="about-label">Author</span><span>St0RM53</span></div>
+      <div class="about-row"><span class="about-label">License</span><span>GNU AGPLv3</span></div>
+      <div class="about-row"><span class="about-label">Repository</span><a href="https://github.com/St0RM53/YetAnotherSON" target="_blank" rel="noopener noreferrer">github.com/St0RM53/YetAnotherSON</a></div>
+      <div class="about-row"><span class="about-label">Issues</span><a href="https://github.com/St0RM53/YetAnotherSON/issues" target="_blank" rel="noopener noreferrer">Report a bug / request a feature</a></div>
+      <div class="about-shortcuts">
+        <div class="about-label" style="margin-bottom:4px;">Shortcuts</div>
+        <div class="about-kbd-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>Undo</span></div>
+        <div class="about-kbd-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd><span>Redo</span></div>
+        <div class="about-kbd-row"><kbd>Right-click</kbd><span>Copy / Duplicate / Paste / Delete</span></div>
+        <div class="about-kbd-row"><kbd>Double-click</kbd>On column edge to reset column width</div>
+      </div>
+      <div class="about-formats">
+        <div class="about-label" style="margin-bottom:4px;">Data formats</div>
+        <div class="about-format-text">JSON is the native, fully-supported format. <strong>YAML and TOML support is experimental</strong>: both are converted into the same plain JSON-shaped data on load, so anything they can express that JSON can't — comments, anchors/aliases, native timestamps, non-decimal number notation — will not round-trip and may be silently altered or dropped. Their libraries are loaded from a CDN on demand, only at the moment you open or save a YAML/TOML file — never on startup, and never for JSON.</div>
+      </div>
+      <div class="about-formats">
+        <div class="about-label" style="margin-bottom:4px;">Third-party libraries</div>
+        <div class="about-attr-row"><a href="https://github.com/nodeca/js-yaml" target="_blank" rel="noopener noreferrer">js-yaml</a><span>MIT License</span></div>
+        <div class="about-attr-row"><a href="https://github.com/sunnyadn/js-toml" target="_blank" rel="noopener noreferrer">js-toml</a><span>MIT License</span></div>
+      </div>
+      <div class="about-note">Runs entirely client-side — no server, no accounts, no telemetry. Your data never leaves this page unless you explicitly save or export it.</div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="confirmOverlay">
+  <div class="overlay-panel confirm-panel">
+    <div class="overlay-head"><h2 id="confirmTitle">Confirm</h2></div>
+    <div class="confirm-body" id="confirmMessage"></div>
+    <div class="overlay-foot" style="justify-content:flex-end;">
+      <button class="ghost" id="confirmCancelBtn">Cancel</button>
+      <button class="primary" id="confirmOkBtn">Continue</button>
+    </div>
+  </div>
+</div>
+
+<div class="settings-dock" id="settingsDock">
+  <div class="settings-card">
+    <div class="overlay-head"><h2>Settings</h2><button class="ghost small" id="btnSettingsClose">Close</button></div>
+    <div class="settings-body" id="settingsBody"></div>
+    <div class="overlay-foot" style="flex-wrap:wrap;">
+      <input type="file" id="settingsFileInput" accept=".json">
+      <button class="ghost small" id="btnLoadSettings">Load settings</button>
+      <div style="display:flex;gap:8px;">
+        <button class="ghost small" id="btnResetSettings">Reset</button>
+        <button class="primary small" id="btnSaveSettings">Save settings</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= app identity ================= */
+const APP_NAME = 'YetAnotherSON';
+const APP_VERSION = 'v1.0.0';
+const APP_RELEASE_DATE = '11-07-2026';
+const DEFAULT_FILE_NAMES = [
+  "SON_IAM_Tired",
+  "SON_Please_Compile",
+  "SON_Not_Again",
+  "SON_It_Works",
+  "SON_Send_Help",
+  "3AM_Fix",
+  "SON_Just_Ship_It",
+  "SON_No_More_Bugs",
+  "SON_FIX_FINAL",
+  "SON_FIX_FINAL_FIXED",
+  "ListenSON",
+  "ComeHereSON",
+  "NotNowSON",
+  "GoodJobSON",
+  "DisappointingSON",
+  "ProudOfYouSON",
+  "SON_CleanYourKeys",
+  "SON_WhereSchema",
+  "SON_DidYouValidate",
+  "SON_WeNeedToTalk",
+  "SON_OfAnObject",
+  "SON_OfAKey",
+  "SON_WithoutComments",
+  "SON_NullAgain",
+  "SON_ParseThis",
+  "SON_StringifyMe",
+  "SON_MissingBracket",
+  "MegaSON",
+  "UltraSON",
+  "SigmaSON",
+  "SON_Prime",
+  "SON_TheThird",
+  "SON_OF_A_BITCH",
+  "FinalBossSON",
+  "UnexpectedSON",
+  "MissingSON",
+  "InvalidSON",
+  "UnknownSON",
+  "RecursiveSON",
+  "UnhandledSON",
+  "SON_NotFound",
+  "SON_IsUndefined",
+  "SON_Expected",
+  "TooManySONs",
+  "SON_WhyThough",
+  "SON_IAmTired",
+  "SON_OfASchema",
+  "NotLikeThisSON",
+  "FocusSON",
+  "GoodSON",
+  "BadSON",
+  "AnotherSON",
+  "JSON_BOI",
+  "CalmDownSON",
+  "ControlYourSON",
+  "TheChosenSON",
+  "SON_OF_Data",
+  "YAMLOL",
+  "YAML_And_Pray",
+  "YAML_Whitespace_Strikes_Again",
+  "IndentLikeYAML",
+  "YAML_Ate_My_Tabs",
+  "YAML_Thought_This_Was_A_List",
+  "XMLXMLXML",
+  "TagYourSON",
+  "ClosingTagMissing",
+  "XML_Needs_More_Brackets",
+  "SON_Not_A_Tag",
+  "Nested_To_The_Moon",
+  "AngleBracketEnjoyer",
+  "XML_But_Worse",
+  "InfiniteTagWorks",
+  "Lord_Of_The_Tags",
+  "TOML_AND_JERRY",
+  "Ground_Control_To_MajorTOML",
+  "OkayTOML",
+  "TOML_Calm_Down",
+  "TOML_Touched_Grass",
+  "SON_Not_TOML",
+  "TOMLs_Little_Config",
+  "TOML_Enjoyer",
+  "TooMuchTOML",
+  "Format_Wars_SON_Strikes_Back",
+  "MySONBeatsYAML",
+  "SON_Started_A_Format_War",
+  "YAML_Would_Never",
+  "XML_Still_Typing",
+  "TOML_Is_Taking_Notes",
+  "TheLastSONBender",
+  "SON_Refuses_To_Indent",
+  "NobodyAskedForXML",
+  "FamousLastWords",
+  "ExpectedSON",
+  "SON_Not_Found",
+  "SON_Is_Null",
+  "UnhandledSONException",
+  "MaximumSONDepthExceeded",
+  "SON_At_Line_1",
+  "SONDrivenDevelopment",
+  "WorksOnMySON",
+  "ProductionSON",
+  "SONOps",
+  "TechDebtSON",
+  "JesusSON",
+  "JanitorSON",
+  "JuniorSON",
+  "JoblessSON",
+  "JankySON",
+  "JitterSON",
+  "JaSON",
+  "JohnSON",
+  "JackSON",
+  "JediSON",
+  "JokerSON",
+  "JudgeSON",
+  "JusticeSON",
+  "JudgmentSON",
+  "JailSON",
+  "JettiSON",
+  "JunkSON",
+  "JokeSON",
+  "JesterSON",
+  "JealouSON",
+  "JailbreakSON",
+  "JenSON",
+  "JimmySON",
+  "JobSecuritySON",
+  "JustShipItSON",
+  "JustOneMoreFixSON",
+  "JustTestingSON",
+  "JustWorkingSON",
+  "JustBecauseSON",
+  "JockerSON",
+  "JackasSON",
+  "JerkSON",
+  "JabbaSON",
+  "JustAQuickFixSON",
+  "JuniorDevSON",
+  "JavaScriptSON",
+  "JefferSON",
+  "JohanSON",
+  "JameSON",
+  "JenSON",
+  "JSONsEvilTwinSON",
+  "YAMLSON",
+  "XMLSON",
+  "TOMLSON",
+  "JudgeMySON",
+  "JustIndentSON"
+]; // random name picked whenever "New" is clicked
+
+/* shuffle-bag: guarantees every name is drawn once before any name repeats */
+let nameBag = [];
+function refillNameBag(){
+  nameBag = DEFAULT_FILE_NAMES.slice();
+  for(let i = nameBag.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [nameBag[i], nameBag[j]] = [nameBag[j], nameBag[i]];
+  }
+  // avoid the new bag's first pick immediately repeating the last name used
+  if(nameBag.length > 1 && nameBag[nameBag.length - 1] === fileName){
+    [nameBag[0], nameBag[nameBag.length - 1]] = [nameBag[nameBag.length - 1], nameBag[0]];
+  }
+}
+function drawRandomName(){
+  if(nameBag.length === 0) refillNameBag();
+  return nameBag.pop();
+}
+
+/* ================= data ================= */
+let data = {};
+let fileName = APP_NAME;
+let fileHandle = null;
+const supportsOpenPicker = 'showOpenFilePicker' in window;
+const supportsSavePicker = 'showSaveFilePicker' in window;
+
+/* ================= navigation + history ================= */
+let path = [];
+let clipboard = null;
+let history = [];
+let future = [];
+let pendingSnapshot = null;
+let dragRef = null;
+
+/* ================= theme + settings ================= */
+const THEME_VARS = {
+  dark:  { '--bg-app':'#12151b','--bg-panel':'#181c24','--bg-panel-alt':'#1f2430','--bg-row-hover':'#242a37','--border':'#2b313d','--text':'#e7eaee','--text-muted':'#8c93a3','--text-faint':'#565e6d','--scrollbar':'#2a303c' },
+  light: { '--bg-app':'#f3f4f6','--bg-panel':'#ffffff','--bg-panel-alt':'#eef0f3','--bg-row-hover':'#e3e6eb','--border':'#d8dbe1','--text':'#1b1e24','--text-muted':'#5a6170','--text-faint':'#8a91a0','--scrollbar':'#c7cbd3' }
+};
+const DEFAULT_SETTINGS = {
+  theme: 'dark',
+  colors: {
+    base:'#12151b', accent:'#ffb454',
+    panel:'#181c24', panelAlt:'#1f2430', border:'#2b313d', rowHover:'#242a37', text:'#e7eaee', textMuted:'#8c93a3',
+    string:'#5ec8d8', number:'#ffb454', boolean:'#A672D8', null:'#6F8FD3', list:'#8fd19e', object:'#CC7578'
+  },
+  prefillKeyTitle: true
+};
+// links each customizable "Interface" color to the CSS var it drives, and to the key in
+// THEME_VARS holding that var's per-theme default — used both by applyTheme() (to layer the
+// customization on top of the preset) and by the theme-switch handler (to know which customized
+// colors were still "on-default" and should follow the theme, vs. genuinely user-picked)
+const THEME_LINKED_COLORS = {
+  base: '--bg-app', panel: '--bg-panel', panelAlt: '--bg-panel-alt',
+  rowHover: '--bg-row-hover', border: '--border', text: '--text', textMuted: '--text-muted'
+};
+let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+const TYPE_LABELS = {string:'Str', number:'Num', boolean:'Bool', null:'Null', list:'Array', object:'Obj'};
+
+/* darken a hex color toward black by a factor (0-1, lower = darker) — used to derive the
+   dim/hover variant of the user's accent color, same relationship #ffb454 -> #5a4526 had */
+function darkenHex(hex, factor){
+  const {r,g,b} = hexToRgb(hex);
+  return rgbToHex(Math.round(r*factor), Math.round(g*factor), Math.round(b*factor));
+}
+
+function applyTheme(){
+  const vars = THEME_VARS[settings.theme] || THEME_VARS.dark;
+  Object.entries(vars).forEach(([k,v])=>document.documentElement.style.setProperty(k,v));
+  Object.entries(THEME_LINKED_COLORS).forEach(([key,cssVar])=>{
+    document.documentElement.style.setProperty(cssVar, settings.colors[key]);
+  });
+  document.documentElement.style.setProperty('--accent', settings.colors.accent);
+  document.documentElement.style.setProperty('--accent-dim', darkenHex(settings.colors.accent, 0.35));
+  document.documentElement.style.setProperty('--hl-string', settings.colors.string);
+  document.documentElement.style.setProperty('--hl-number', settings.colors.number);
+  document.documentElement.style.setProperty('--hl-boolean', settings.colors.boolean);
+  document.documentElement.style.setProperty('--hl-null', settings.colors.null);
+}
+
+function getContrastColor(hex){
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+  const lum = (0.299*r + 0.587*g + 0.114*b)/255;
+  return lum > 0.55 ? '#12151b' : '#f2f4f7';
+}
+function getType(v){
+  if(v===null) return 'null';
+  if(Array.isArray(v)) return 'list';
+  if(typeof v==='object') return 'object';
+  return typeof v;
+}
+function styleTypeSelect(sel, type){
+  const bg = settings.colors[type];
+  sel.style.background = bg; sel.style.borderColor = bg; sel.style.color = getContrastColor(bg);
+}
+function buildTypeSelect(currentType){
+  const sel = document.createElement('select');
+  sel.className = 'type-select';
+  ['string','number','boolean','null','list','object'].forEach(t=>{
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = TYPE_LABELS[t];
+    if(t===currentType) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  styleTypeSelect(sel, currentType);
+  sel.addEventListener('change', ()=> styleTypeSelect(sel, sel.value));
+  sel.addEventListener('mousedown', e=>e.stopPropagation());
+  return sel;
+}
+function buildConversionMessage(subject, oldVal, newType){
+  const oldType = getType(oldVal);
+  if(oldType===newType) return null;
+  if(oldType==='list' && newType==='object'){
+    return null; // lossless: every item becomes a keyed property, nothing is discarded
+  }
+  if(oldType==='object' && newType==='list'){
+    const n = Object.keys(oldVal).length;
+    if(n===0) return null;
+    return 'Converting '+subject+' from Object to Array will keep all '+n+' value'+(n===1?'':'s')+' as array items, but the property names will not be preserved. Continue?';
+  }
+  const lossy = (oldType==='list') ? oldVal.length>0
+              : (oldType==='object') ? Object.keys(oldVal).length>0
+              : (oldType==='null') ? false
+              : (newType==='list'||newType==='object') ? !(oldVal===""||oldVal===0||oldVal===false)
+              : false;
+  if(!lossy) return null;
+  return 'Changing '+subject+' from '+TYPE_LABELS[oldType]+' to '+TYPE_LABELS[newType]+' will discard its current content. Continue?';
+}
+function convertedValue(newType, oldVal){
+  if(newType==='list') return isObj(oldVal) ? Object.values(oldVal) : [];
+  if(newType==='object') return isArr(oldVal) ? arrayToObject(oldVal) : {};
+  if(newType==='null') return null;
+  if(newType==='number') return 0;
+  if(newType==='boolean') return false;
+  return "";
+}
+
+/* ================= custom color picker (no native input[type=color]) ================= */
+function hexToRgb(hex){ hex=hex.replace('#',''); return {r:parseInt(hex.substr(0,2),16), g:parseInt(hex.substr(2,2),16), b:parseInt(hex.substr(4,2),16)}; }
+function rgbToHsv(r,g,b){
+  r/=255;g/=255;b/=255;
+  const max=Math.max(r,g,b), min=Math.min(r,g,b); let h,s,v=max; const d=max-min;
+  s = max===0?0:d/max;
+  if(max===min){ h=0; } else {
+    switch(max){
+      case r: h=(g-b)/d+(g<b?6:0); break;
+      case g: h=(b-r)/d+2; break;
+      case b: h=(r-g)/d+4; break;
+    }
+    h/=6;
+  }
+  return {h:h*360, s:s*100, v:v*100};
+}
+function hexToHsv(hex){ const {r,g,b}=hexToRgb(hex); return rgbToHsv(r,g,b); }
+function hsvToRgb(h,s,v){
+  s/=100; v/=100;
+  const c=v*s, x=c*(1-Math.abs((h/60)%2-1)), m=v-c;
+  let r,g,b;
+  if(h<60){r=c;g=x;b=0;} else if(h<120){r=x;g=c;b=0;} else if(h<180){r=0;g=c;b=x;}
+  else if(h<240){r=0;g=x;b=c;} else if(h<300){r=x;g=0;b=c;} else {r=c;g=0;b=x;}
+  return {r:Math.round((r+m)*255), g:Math.round((g+m)*255), b:Math.round((b+m)*255)};
+}
+function rgbToHex(r,g,b){ return '#'+[r,g,b].map(x=>Math.max(0,Math.min(255,x)).toString(16).padStart(2,'0')).join(''); }
+
+function closeAllColorPopovers(){ document.querySelectorAll('.cp-popover.show').forEach(p=>p.classList.remove('show')); }
+document.addEventListener('click', (e)=>{ if(!e.target.closest('.cp-wrap')) closeAllColorPopovers(); });
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.add-form') && !e.target.closest('#addPropBtn') && !e.target.closest('.ctx-menu')){
+    document.querySelectorAll('.add-form.show').forEach(f=>f.classList.remove('show'));
+  }
+});
+
+function makeColorPicker(initialHex, onChange){
+  let hex = initialHex;
+  let hsv = hexToHsv(hex);
+
+  const wrap = document.createElement('div'); wrap.className = 'cp-wrap';
+  const swatch = document.createElement('button'); swatch.type='button'; swatch.className='cp-swatch';
+  const hexInput = document.createElement('input'); hexInput.type='text'; hexInput.className='cp-hex';
+  const popover = document.createElement('div'); popover.className='cp-popover';
+  const svBox = document.createElement('div'); svBox.className='cp-svbox';
+  const svWhite = document.createElement('div'); svWhite.className='cp-svwhite';
+  const svBlack = document.createElement('div'); svBlack.className='cp-svblack';
+  const svCursor = document.createElement('div'); svCursor.className='cp-svcursor';
+  svBox.append(svWhite, svBlack, svCursor);
+  const hueSlider = document.createElement('div'); hueSlider.className='cp-hue';
+  const hueHandle = document.createElement('div'); hueHandle.className='cp-huehandle';
+  hueSlider.appendChild(hueHandle);
+  popover.append(svBox, hueSlider);
+  wrap.append(swatch, hexInput, popover);
+
+  function updateUI(){
+    svBox.style.background = 'hsl('+hsv.h+',100%,50%)';
+    svCursor.style.left = hsv.s+'%';
+    svCursor.style.top = (100-hsv.v)+'%';
+    hueHandle.style.left = (hsv.h/360*100)+'%';
+    swatch.style.background = hex;
+    hexInput.value = hex.toUpperCase();
+  }
+  function commitFromHsv(){
+    const rgb = hsvToRgb(hsv.h, hsv.s, hsv.v);
+    hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+    updateUI();
+    onChange(hex);
+  }
+  updateUI();
+
+  function svHandler(e){
+    const rect = svBox.getBoundingClientRect();
+    let x = (e.clientX-rect.left)/rect.width; x = Math.max(0,Math.min(1,x));
+    let y = (e.clientY-rect.top)/rect.height; y = Math.max(0,Math.min(1,y));
+    hsv.s = x*100; hsv.v = (1-y)*100;
+    commitFromHsv();
+  }
+  svBox.addEventListener('mousedown', (e)=>{
+    e.preventDefault(); svHandler(e);
+    const move = (ev)=>svHandler(ev);
+    const up = ()=>{ window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up); };
+    window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  });
+
+  function hueHandler(e){
+    const rect = hueSlider.getBoundingClientRect();
+    let x = (e.clientX-rect.left)/rect.width; x = Math.max(0,Math.min(1,x));
+    hsv.h = x*360;
+    commitFromHsv();
+  }
+  hueSlider.addEventListener('mousedown', (e)=>{
+    e.preventDefault(); hueHandler(e);
+    const move=(ev)=>hueHandler(ev);
+    const up=()=>{ window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up); };
+    window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  });
+
+  swatch.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const wasOpen = popover.classList.contains('show');
+    closeAllColorPopovers();
+    if(!wasOpen) popover.classList.add('show');
+  });
+  hexInput.addEventListener('click', e=>e.stopPropagation());
+  hexInput.addEventListener('input', ()=>{
+    const val = hexInput.value.trim().replace(/^#/,'');
+    if(/^[0-9a-fA-F]{6}$/.test(val)){
+      hex = '#'+val;
+      hsv = hexToHsv(hex);
+      updateUI();
+      onChange(hex);
+    }
+  });
+
+  wrap.setHex = (newHex)=>{ hex=newHex; hsv=hexToHsv(hex); updateUI(); };
+  return wrap;
+}
+
+/* ================= helpers ================= */
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function isScalar(v){ return v===null || typeof v !== 'object'; }
+function isArr(v){ return Array.isArray(v); }
+function isObj(v){ return v!==null && typeof v==='object' && !Array.isArray(v); }
+function parseScalarInput(text){
+  const t = (text||"").trim();
+  if(t==="") return "";
+  if(t.toLowerCase()==="null") return null;
+  if(/^0x[0-9a-fA-F]+$/.test(t)) return t;
+  if(/^-?\d+$/.test(t)) return Number(t);
+  if(/^-?\d*\.\d+$/.test(t)) return Number(t);
+  if(t==="true") return true;
+  if(t==="false") return false;
+  return t;
+}
+function scalarToText(v){ if(v===null||v===undefined) return ""; return String(v); }
+function slug(str){ return (str||"item").toLowerCase().trim().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"") || "item"; }
+function uniqueKey(base, existingKeys){ let k=base,i=2; while(existingKeys.includes(k)){k=base+"_"+i;i++;} return k; }
+function getAt(root, p){ let node=root; for(const step of p){ if(node==null) return undefined; node=node[step]; } return node; }
+function replaceNodeAt(curPath, newValue){
+  if(curPath.length===0){ data = newValue; return; }
+  const parent = getAt(data, curPath.slice(0,-1));
+  parent[curPath[curPath.length-1]] = newValue;
+}
+function arrayToObject(arr){
+  const out = {};
+  arr.forEach((item, i)=>{
+    const base = (isObj(item) && typeof item.key==='string' && item.key.trim()!=='') ? slug(item.key) : 'item_'+i;
+    const key = uniqueKey(base, Object.keys(out));
+    out[key] = item;
+  });
+  return out;
+}
+function detectSummary(item){
+  if(isObj(item)){
+    for(const k of ['title','label','name']) if(typeof item[k]==='string') return {text:item[k], prop:k};
+    if(typeof item.key==='string') return {text:item.key, prop:null};
+    return {text:'(untitled)', prop:null};
+  }
+  return {text:scalarToText(item), prop:null};
+}
+function rebuildObjectKeys(obj, orderedEntries){
+  const out = {};
+  orderedEntries.forEach(([k,v])=>{
+    let key = (k===undefined||k===null||k.trim()==="") ? "property" : k;
+    let i=2; const base=key;
+    while(Object.prototype.hasOwnProperty.call(out,key)){ key = base+"_"+i; i++; }
+    out[key]=v;
+  });
+  return out;
+}
+
+/* ================= undo / redo ================= */
+function snapshot(){ return { dataStr: JSON.stringify(data), path: JSON.parse(JSON.stringify(path)) }; }
+function pushHistory(){ history.push(snapshot()); if(history.length>100) history.shift(); future=[]; updateHistoryButtons(); }
+function undo(){ if(history.length===0) return; future.push(snapshot()); const prev=history.pop(); data=JSON.parse(prev.dataStr); path=prev.path; render(); }
+function redo(){ if(future.length===0) return; history.push(snapshot()); const next=future.pop(); data=JSON.parse(next.dataStr); path=next.path; render(); }
+function updateHistoryButtons(){
+  document.getElementById('btnUndo').disabled = history.length===0;
+  document.getElementById('btnRedo').disabled = future.length===0;
+}
+function trackInputHistory(inputEl){
+  inputEl.addEventListener('focus', ()=>{ pendingSnapshot = snapshot(); });
+  inputEl.addEventListener('blur', ()=>{
+    if(pendingSnapshot && JSON.stringify(data)!==pendingSnapshot.dataStr){
+      history.push(pendingSnapshot); if(history.length>100) history.shift(); future=[]; updateHistoryButtons();
+    }
+    pendingSnapshot = null;
+  });
+}
+
+/* ================= context menu ================= */
+const ctxMenuEl = document.getElementById('ctxMenu');
+function showCtxMenu(x,y,items){
+  ctxMenuEl.innerHTML='';
+  items.forEach(it=>{
+    if(it.sep){ ctxMenuEl.appendChild(document.createElement('hr')); return; }
+    const b=document.createElement('button');
+    b.textContent = it.label; b.className = it.danger?'danger':''; b.disabled=!!it.disabled;
+    b.addEventListener('click', ()=>{ hideCtxMenu(); it.onClick(); });
+    ctxMenuEl.appendChild(b);
+  });
+  const vw=window.innerWidth, vh=window.innerHeight;
+  ctxMenuEl.style.left = Math.min(x, vw-190)+'px';
+  ctxMenuEl.style.top = Math.min(y, vh-10-items.length*30)+'px';
+  ctxMenuEl.classList.add('show');
+}
+function hideCtxMenu(){ ctxMenuEl.classList.remove('show'); }
+
+/* ---- custom confirm modal (replaces native window.confirm, which browsers let users silence) ---- */
+const confirmOverlayEl = document.getElementById('confirmOverlay');
+const confirmMessageEl = document.getElementById('confirmMessage');
+const confirmOkBtn = document.getElementById('confirmOkBtn');
+const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+function showConfirm(message, opts){
+  opts = opts || {};
+  return new Promise((resolve)=>{
+    confirmMessageEl.textContent = message;
+    confirmOkBtn.textContent = opts.okLabel || 'Continue';
+    confirmCancelBtn.textContent = opts.cancelLabel || 'Cancel';
+    confirmOverlayEl.classList.add('show');
+    confirmOkBtn.focus();
+    function cleanup(result){
+      confirmOverlayEl.classList.remove('show');
+      confirmOkBtn.removeEventListener('click', onOk);
+      confirmCancelBtn.removeEventListener('click', onCancel);
+      confirmOverlayEl.removeEventListener('keydown', onKey);
+      resolve(result);
+    }
+    function onOk(){ cleanup(true); }
+    function onCancel(){ cleanup(false); }
+    function onKey(e){
+      if(e.key==='Escape'){ e.stopPropagation(); cleanup(false); }
+      if(e.key==='Enter'){ e.stopPropagation(); cleanup(true); }
+    }
+    confirmOkBtn.addEventListener('click', onOk);
+    confirmCancelBtn.addEventListener('click', onCancel);
+    confirmOverlayEl.addEventListener('keydown', onKey);
+  });
+}
+function isDataEmpty(){ return isObj(data) && Object.keys(data).length===0; }
+
+document.addEventListener('click', hideCtxMenu);
+window.addEventListener('scroll', hideCtxMenu, true);
+document.addEventListener('contextmenu', e=>{
+  const tag = e.target.tagName;
+  if(tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT') return;
+  e.preventDefault();
+  if(!e.__handled) hideCtxMenu();
+});
+window.addEventListener('keydown', e=>{
+  if(e.key==='Escape') hideCtxMenu();
+  const mod = e.ctrlKey || e.metaKey;
+  if(mod && e.key.toLowerCase()==='z' && !e.shiftKey){ e.preventDefault(); undo(); }
+  else if(mod && (e.key.toLowerCase()==='y' || (e.key.toLowerCase()==='z' && e.shiftKey))){ e.preventDefault(); redo(); }
+});
+
+/* ================= navigation ================= */
+// remembers, for a given path prefix, which child was last opened from it — so navigating
+// away to a sibling and then back restores the deeper navigation instead of collapsing it
+let navMemory = {};
+function goTo(colIndex, step){
+  const prefix = path.slice(0, colIndex);
+  navMemory[JSON.stringify(prefix)] = step;
+  path = prefix.concat([step]);
+  extendPathFromMemory();
+  render();
+}
+function extendPathFromMemory(){
+  let node = data;
+  for(const step of path){ if(node==null) return; node = node[step]; }
+  while(node!=null && (isObj(node) || isArr(node))){
+    const key = JSON.stringify(path);
+    if(!(key in navMemory)) break;
+    const nextStep = navMemory[key];
+    if(isArr(node)){
+      if(typeof nextStep !== 'number' || nextStep < 0 || nextStep >= node.length) break;
+    } else {
+      if(!Object.prototype.hasOwnProperty.call(node, nextStep)) break;
+    }
+    path = path.concat([nextStep]);
+    node = node[nextStep];
+  }
+}
+function truncateAfterEdit(colIndex){ path = path.slice(0, colIndex); }
+function pathStepAt(colIdx){ return path.length > colIdx ? path[colIdx] : undefined; }
+
+/* ================= scroll preservation ================= */
+function captureScroll(){
+  const map = {};
+  document.querySelectorAll('.columns .col').forEach((col,i)=>{ const b=col.querySelector('.col-body'); if(b) map[i]=b.scrollTop; });
+  return map;
+}
+function restoreScroll(map){
+  document.querySelectorAll('.columns .col').forEach((col,i)=>{ const b=col.querySelector('.col-body'); if(b && map[i]!==undefined) b.scrollTop = map[i]; });
+}
+
+/* ================= rendering ================= */
+function render(){
+  const scrollMap = captureScroll();
+  renderLegend();
+  renderBreadcrumb();
+  renderColumns();
+  restoreScroll(scrollMap);
+  updateHistoryButtons();
+}
+
+function renderLegend(){
+  document.getElementById('legend').innerHTML = Object.keys(TYPE_LABELS).map(t=>
+    '<span><i style="background:'+settings.colors[t]+'"></i>'+TYPE_LABELS[t]+'</span>'
+  ).join('');
+}
+
+function renderBreadcrumb(){
+  const bc = document.getElementById('breadcrumb');
+  bc.innerHTML = '';
+  const rootBtn = document.createElement('button');
+  rootBtn.className = 'crumb'; rootBtn.textContent = 'root';
+  rootBtn.addEventListener('click', ()=>{ path = []; render(); });
+  bc.appendChild(rootBtn);
+
+  let node = data;
+  for(let i=0;i<path.length;i++){
+    const step = path[i];
+    const next = node ? node[step] : undefined;
+    const label = (typeof step === 'number') ? detectSummary(next).text : String(step);
+    const sep = document.createElement('span'); sep.className='crumb-sep'; sep.textContent='›';
+    bc.appendChild(sep);
+    const btn = document.createElement('button');
+    btn.className = 'crumb'; btn.textContent = label;
+    const truncateLen = i+1;
+    btn.addEventListener('click', ()=>{ path = path.slice(0, truncateLen); render(); });
+    bc.appendChild(btn);
+    node = next;
+    if(node===undefined) break;
+  }
+  const trace = document.createElement('div'); trace.className='trace';
+  bc.appendChild(trace);
+}
+
+function renderColumns(){
+  const root = document.getElementById('columns');
+  root.innerHTML = '';
+  let colIdx = 0;
+  let node = data;
+  let curPath = [];
+
+  addColumn(root, renderObjectColumn(node, curPath, colIdx), colIdx);
+  colIdx++;
+
+  for(let i=0;i<path.length;i++){
+    const step = path[i];
+    if(node==null) break;
+    node = node[step];
+    curPath = path.slice(0, i+1);
+    if(node===undefined) break;
+    if(isArr(node)) addColumn(root, renderArrayColumn(node, curPath, colIdx), colIdx);
+    else if(isObj(node)) addColumn(root, renderObjectColumn(node, curPath, colIdx), colIdx);
+    else break;
+    colIdx++;
+  }
+}
+
+// remembered per depth (colIdx), in-memory only, so a column keeps its size as you navigate
+// deeper/back rather than snapping to the default width every render
+const colWidths = {};
+const COL_MIN_WIDTH = 180;
+const COL_DEFAULT_WIDTH = 310;
+function addColumn(root, col, colIdx){
+  if(colWidths[colIdx]) col.style.width = colWidths[colIdx]+'px';
+  attachColumnResizer(col, colIdx);
+  root.appendChild(col);
+}
+function attachColumnResizer(col, colIdx){
+  const handle = document.createElement('div');
+  handle.className = 'col-resize-handle';
+  handle.title = 'Drag to resize, double-click to reset';
+  handle.addEventListener('mousedown', (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = col.getBoundingClientRect().width;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    function onMove(ev){
+      const w = Math.max(COL_MIN_WIDTH, startWidth + (ev.clientX - startX));
+      col.style.width = w+'px';
+    }
+    function onUp(){
+      colWidths[colIdx] = col.getBoundingClientRect().width;
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+  handle.addEventListener('dblclick', (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    col.style.width = COL_DEFAULT_WIDTH + 'px';
+    delete colWidths[colIdx];
+  });
+  col.appendChild(handle);
+}
+
+
+/* ---- object column ---- */
+function renderObjectColumn(obj, curPath, colIdx){
+  const col = document.createElement('div');
+  col.className = 'col';
+  col.style.setProperty('--col-accent', curPath.length===0 ? settings.colors.accent : settings.colors.object);
+  const label = curPath.length===0 ? 'Root' : (typeof curPath[curPath.length-1]==='number' ? detectSummary(obj).text : String(curPath[curPath.length-1]));
+  col.innerHTML = `<div class="col-head"><span class="label">${escapeHtml(label)}</span><span class="count">${Object.keys(obj).length} props</span></div>
+    <div class="col-body"></div>
+    <div class="col-footer">
+      <button id="addPropBtn">+ Add property</button>
+      <div class="add-form" id="addPropForm">
+        <input type="text" id="addPropName" placeholder="property name">
+        <select id="addPropType">
+          <option value="value">Value</option>
+          <option value="list">Array (list of items)</option>
+          <option value="object">Object (key/value group)</option>
+        </select>
+        <button class="primary small" id="addPropConfirm">Add</button>
+      </div>
+    </div>`;
+  const body = col.querySelector('.col-body');
+  const entries = Object.entries(obj);
+  const selectedStep = pathStepAt(colIdx);
+
+  if(entries.length===0){ body.innerHTML = '<div class="col-empty">No properties yet. Add one below, or right-click for paste.</div>'; }
+
+  entries.forEach(([key,val], idx)=>{
+    const row = document.createElement('div');
+    row.className = 'prop-row';
+    row.draggable = true;
+    if(selectedStep === key) row.style.borderColor = 'var(--accent)';
+
+    const curType = getType(val);
+    const typeSel = buildTypeSelect(curType);
+    row.appendChild(typeSel);
+
+    const keyInput = document.createElement('input');
+    keyInput.className = 'prop-key'; keyInput.value = key;
+    row.appendChild(keyInput);
+
+    if(isScalar(val)){
+      const valInput = document.createElement('input');
+      valInput.className = 'prop-value'; valInput.value = scalarToText(val);
+      valInput.addEventListener('input', ()=>{ obj[key] = parseScalarInput(valInput.value); });
+      trackInputHistory(valInput);
+      row.appendChild(valInput);
+    } else if(isArr(val)){
+      const btn = document.createElement('button');
+      btn.className = 'open-btn'; btn.textContent = '→ ' + val.length + ' item' + (val.length===1?'':'s');
+      btn.addEventListener('click', ()=> goTo(colIdx, key));
+      row.appendChild(btn);
+    } else if(isObj(val)){
+      const btn = document.createElement('button');
+      btn.className = 'open-btn'; btn.textContent = '→ ' + Object.keys(val).length + ' propert' + (Object.keys(val).length===1?'y':'ies');
+      btn.addEventListener('click', ()=> goTo(colIdx, key));
+      row.appendChild(btn);
+    }
+
+    typeSel.addEventListener('change', async ()=>{
+      const newType = typeSel.value;
+      if(newType===curType) return;
+      const warnMsg = buildConversionMessage('"'+key+'"', val, newType);
+      if(warnMsg){
+        const ok = await showConfirm(warnMsg, {okLabel:'Convert', danger:true});
+        if(!ok){ typeSel.value = curType; styleTypeSelect(typeSel, curType); return; }
+      }
+      pushHistory(); obj[key] = convertedValue(newType, val); if(pathStepAt(colIdx) === key) truncateAfterEdit(colIdx); render();
+    });
+
+    keyInput.addEventListener('focus', ()=>{ pendingSnapshot = snapshot(); });
+    keyInput.addEventListener('input', ()=>{
+      const newEntries = Object.entries(obj);
+      const wasSelected = pathStepAt(colIdx) === key;
+      newEntries[idx][0] = keyInput.value;
+      const rebuilt = rebuildObjectKeys(obj, newEntries);
+      Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
+      if(wasSelected && path[colIdx] !== undefined){ path[colIdx] = keyInput.value; }
+      renderBreadcrumb();
+    });
+    keyInput.addEventListener('blur', ()=>{
+      if(pendingSnapshot && JSON.stringify(data)!==pendingSnapshot.dataStr){
+        history.push(pendingSnapshot); if(history.length>100) history.shift(); future=[]; updateHistoryButtons();
+      }
+      pendingSnapshot = null;
+    });
+
+    row.addEventListener('dragstart', (e)=>{ dragRef = {containerObj:obj, key}; e.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragover', (e)=>{ e.preventDefault(); row.style.borderTop='2px solid var(--accent)'; });
+    row.addEventListener('dragleave', ()=>{ row.style.borderTop=''; });
+    row.addEventListener('drop', (e)=>{
+      e.preventDefault(); row.style.borderTop='';
+      if(!dragRef || dragRef.containerObj!==obj || dragRef.key===key){ dragRef=null; return; }
+      pushHistory();
+      const ents = Object.entries(obj);
+      const fromIdx = ents.findIndex(([k])=>k===dragRef.key);
+      const toIdx = ents.findIndex(([k])=>k===key);
+      const [moved] = ents.splice(fromIdx,1);
+      ents.splice(toIdx,0,moved);
+      const rebuilt = rebuildObjectKeys(obj, ents);
+      Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
+      dragRef = null; render();
+    });
+
+    row.addEventListener('contextmenu', (e)=>{
+      e.preventDefault(); e.stopPropagation(); e.__handled = true;
+      showCtxMenu(e.clientX, e.clientY, [
+        { label:'Copy property', onClick: ()=>{ clipboard = { kind:'prop', name:key, data: JSON.parse(JSON.stringify(val)) }; } },
+        { label:'Duplicate property', onClick: ()=>{
+            pushHistory();
+            const dupKey = uniqueKey(key+'_copy', Object.keys(obj));
+            const cur = Object.entries(obj);
+            const rebuilt = rebuildObjectKeys(obj, [...cur.slice(0,idx+1), [dupKey, JSON.parse(JSON.stringify(val))], ...cur.slice(idx+1)]);
+            Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
+            render();
+        }},
+        { label:'Paste as property here', disabled: !clipboard, onClick: ()=>{
+            if(!clipboard) return;
+            pushHistory();
+            const baseName = clipboard.kind==='prop' ? clipboard.name : ((isObj(clipboard.data) && typeof clipboard.data.key==='string' && clipboard.data.key.trim()!=='') ? clipboard.data.key : 'item');
+            const newKey = uniqueKey(slug(baseName), Object.keys(obj));
+            obj[newKey] = JSON.parse(JSON.stringify(clipboard.data));
+            render();
+        }},
+        { sep:true },
+        { label:'Delete property', danger:true, onClick: async ()=>{
+            const ok = await showConfirm('Delete property "'+key+'"?', {okLabel:'Delete', danger:true});
+            if(ok){ pushHistory(); delete obj[key]; if(pathStepAt(colIdx) === key) truncateAfterEdit(colIdx); render(); }
+        }}
+      ]);
+    });
+
+    body.appendChild(row);
+  });
+
+  body.addEventListener('contextmenu', (e)=>{
+    if(e.__handled) return;
+    e.preventDefault(); e.__handled = true;
+    showCtxMenu(e.clientX, e.clientY, [
+      { label:'Paste as property here', disabled: !clipboard, onClick: ()=>{
+          if(!clipboard) return;
+          pushHistory();
+          const baseName = clipboard.kind==='prop' ? clipboard.name : ((isObj(clipboard.data) && typeof clipboard.data.key==='string' && clipboard.data.key.trim()!=='') ? clipboard.data.key : 'item');
+          const newKey = uniqueKey(slug(baseName), Object.keys(obj));
+          obj[newKey] = JSON.parse(JSON.stringify(clipboard.data));
+          render();
+      }},
+      { label:'+ Add property', onClick: ()=>{ col.querySelector('#addPropForm').classList.add('show'); col.querySelector('#addPropName').focus(); } }
+    ]);
+  });
+
+  const addBtn = col.querySelector('#addPropBtn');
+  const addForm = col.querySelector('#addPropForm');
+  addBtn.addEventListener('click', ()=> addForm.classList.toggle('show'));
+  col.querySelector('#addPropConfirm').addEventListener('click', ()=>{
+    const nameInput = col.querySelector('#addPropName');
+    const typeSel = col.querySelector('#addPropType');
+    let name = nameInput.value.trim() || 'New Prop';
+    name = uniqueKey(slug(name), Object.keys(obj));
+    const type = typeSel.value;
+    pushHistory();
+    obj[name] = type==='list' ? [] : type==='object' ? {} : "";
+    nameInput.value=''; addForm.classList.remove('show'); render();
+  });
+
+  return col;
+}
+
+/* ---- array column ---- */
+function renderArrayColumn(arr, curPath, colIdx){
+  const col = document.createElement('div');
+  col.className = 'col';
+  col.style.setProperty('--col-accent', settings.colors.list);
+  const label = String(curPath[curPath.length-1]);
+  col.innerHTML = `<div class="col-head"><span class="label">${escapeHtml(label)}</span><span class="count">${arr.length}</span></div>
+    <div class="col-body"></div>
+    <div class="col-footer">
+      <button id="addItemBtn">+ Add item</button>
+      <button class="ghost" id="becomeObjBtn">Convert to object</button>
+    </div>`;
+  const body = col.querySelector('.col-body');
+  const selectedStep = pathStepAt(colIdx);
+
+  if(arr.length===0){ body.innerHTML = '<div class="col-empty">No items yet. Add one below, or right-click for paste.</div>'; }
+
+  arr.forEach((item, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'row-card' + (selectedStep===idx ? ' selected':'');
+    row.draggable = true;
+    const curType = getType(item);
+
+    const top = document.createElement('div');
+    top.className = 'row-top';
+    const typeSel = buildTypeSelect(curType);
+    top.appendChild(typeSel);
+
+    if(isObj(item)){
+      const summary = detectSummary(item);
+      const hasAddr = typeof item.addr === 'string';
+      const titleInput = document.createElement('input');
+      titleInput.className = 'title-input'; titleInput.value = summary.text; titleInput.placeholder = '(untitled)';
+      top.appendChild(titleInput);
+      if(hasAddr){ const badge=document.createElement('span'); badge.className='addr-badge'; badge.textContent=item.addr; top.appendChild(badge); }
+      row.appendChild(top);
+      if(typeof item.key === 'string'){
+        const keyInput = document.createElement('input');
+        keyInput.className = 'key-input'; keyInput.value = item.key; keyInput.placeholder = 'key';
+        keyInput.addEventListener('focus', ()=>goTo(colIdx, idx));
+        keyInput.addEventListener('input', ()=>{ item.key = keyInput.value; });
+        trackInputHistory(keyInput);
+        row.appendChild(keyInput);
+      }
+      row.addEventListener('click', (e)=>{ if(e.target.tagName!=='INPUT' && e.target.tagName!=='SELECT') goTo(colIdx, idx); });
+      titleInput.addEventListener('focus', ()=>goTo(colIdx, idx));
+      titleInput.addEventListener('input', ()=>{
+        if(summary.prop){ item[summary.prop] = titleInput.value; } else { item.title = titleInput.value; }
+        renderBreadcrumb();
+      });
+      trackInputHistory(titleInput);
+    } else if(isArr(item)){
+      const label2 = document.createElement('button');
+      label2.className = 'open-btn'; label2.textContent = '→ ' + item.length + ' item'+(item.length===1?'':'s');
+      label2.addEventListener('click', ()=> goTo(colIdx, idx));
+      top.appendChild(label2); row.appendChild(top);
+    } else {
+      const valInput = document.createElement('input');
+      valInput.className = 'title-input'; valInput.value = scalarToText(item); valInput.placeholder = 'value';
+      valInput.addEventListener('input', ()=>{ arr[idx] = parseScalarInput(valInput.value); });
+      trackInputHistory(valInput);
+      top.appendChild(valInput); row.appendChild(top);
+    }
+
+    typeSel.addEventListener('change', async ()=>{
+      const newType = typeSel.value;
+      if(newType===curType) return;
+      const warnMsg = buildConversionMessage('this item', item, newType);
+      if(warnMsg){
+        const ok = await showConfirm(warnMsg, {okLabel:'Convert', danger:true});
+        if(!ok){ typeSel.value = curType; styleTypeSelect(typeSel, curType); return; }
+      }
+      pushHistory(); arr[idx] = convertedValue(newType, item); if(pathStepAt(colIdx) === idx) truncateAfterEdit(colIdx); render();
+    });
+
+    row.addEventListener('dragstart', ()=>{ dragRef = {containerArr:arr, idx}; });
+    row.addEventListener('dragover', (e)=>{ e.preventDefault(); row.style.borderTop='2px solid #5ec8d8'; });
+    row.addEventListener('dragleave', ()=>{ row.style.borderTop=''; });
+    row.addEventListener('drop', (e)=>{
+      e.preventDefault(); row.style.borderTop='';
+      if(!dragRef || dragRef.containerArr!==arr || dragRef.idx===idx){ dragRef=null; return; }
+      pushHistory();
+      const [moved] = arr.splice(dragRef.idx,1);
+      const insertIdx = idx > dragRef.idx ? idx-1 : idx;
+      arr.splice(insertIdx,0,moved);
+      dragRef = null; truncateAfterEdit(colIdx); render();
+    });
+
+    row.addEventListener('contextmenu', (e)=>{
+      e.preventDefault(); e.stopPropagation(); e.__handled = true;
+      showCtxMenu(e.clientX, e.clientY, [
+        { label:'Copy item', onClick: ()=>{ clipboard = { kind:'item', data: JSON.parse(JSON.stringify(item)) }; } },
+        { label:'Duplicate item', onClick: ()=>{
+            pushHistory();
+            const copy = JSON.parse(JSON.stringify(item));
+            if(isObj(copy) && typeof copy.key==='string'){ copy.key = uniqueKey(copy.key+'_copy', arr.filter(isObj).map(x=>x.key)); }
+            arr.splice(idx+1, 0, copy); render();
+        }},
+        { label:'Paste as item below', disabled: !clipboard, onClick: ()=>{
+            if(!clipboard) return;
+            pushHistory();
+            const copy = JSON.parse(JSON.stringify(clipboard.data));
+            if(isObj(copy) && typeof copy.key==='string'){ copy.key = uniqueKey(copy.key+'_copy', arr.filter(isObj).map(x=>x.key)); }
+            arr.splice(idx+1, 0, copy); render();
+        }},
+        { sep:true },
+        { label:'Delete item', danger:true, onClick: async ()=>{
+            const ok = await showConfirm('Delete this item?', {okLabel:'Delete', danger:true});
+            if(ok){ pushHistory(); arr.splice(idx,1); if(pathStepAt(colIdx) === idx) truncateAfterEdit(colIdx); render(); }
+        }}
+      ]);
+    });
+
+    body.appendChild(row);
+  });
+
+  body.addEventListener('contextmenu', (e)=>{
+    if(e.__handled) return;
+    e.preventDefault(); e.__handled = true;
+    showCtxMenu(e.clientX, e.clientY, [
+      { label:'Paste as item here', disabled: !clipboard, onClick: ()=>{
+          if(!clipboard) return;
+          pushHistory();
+          const copy = JSON.parse(JSON.stringify(clipboard.data));
+          if(isObj(copy) && typeof copy.key==='string'){ copy.key = uniqueKey(copy.key+'_copy', arr.filter(isObj).map(x=>x.key)); }
+          arr.push(copy); render();
+      }},
+      { label:'+ Add item', onClick: ()=>{ col.querySelector('#addItemBtn').click(); } }
+    ]);
+  });
+
+  col.querySelector('#addItemBtn').addEventListener('click', ()=>{
+    pushHistory();
+    if(arr.length===0 || isObj(arr[0])){
+      if(settings.prefillKeyTitle){
+        const existing = arr.filter(isObj).map(x=>x.key).filter(Boolean);
+        arr.push({ key: uniqueKey('new_item', existing), title: 'New Item' });
+      } else {
+        arr.push({});
+      }
+    } else {
+      arr.push("");
+    }
+    render();
+  });
+
+  col.querySelector('#becomeObjBtn').addEventListener('click', ()=>{
+    pushHistory();
+    replaceNodeAt(curPath, arrayToObject(arr));
+    truncateAfterEdit(colIdx);
+    render();
+  });
+
+  return col;
+}
+
+/* ================= file: name / open / save ================= */
+function updateTitle(){ document.title = fileName + ' — ' + APP_NAME; }
+// grows the filename box as the name gets longer than the 4px baseline, instead of clipping it
+const FILENAME_BASE_WIDTH = 40;
+let fileNameMeasureCtx = null;
+function autosizeFileNameInput(){
+  const input = document.getElementById('fileNameInput');
+  if(!fileNameMeasureCtx) fileNameMeasureCtx = document.createElement('canvas').getContext('2d');
+  const cs = getComputedStyle(input);
+  fileNameMeasureCtx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const textWidth = fileNameMeasureCtx.measureText(input.value || input.placeholder || '').width;
+  input.style.width = Math.max(FILENAME_BASE_WIDTH, Math.ceil(textWidth) + 0) + 'px';
+}
+function setFileName(name){
+  fileName = (name||APP_NAME).replace(/\.(json|ya?ml)$/i,'');
+  document.getElementById('fileNameInput').value = fileName;
+  updateTitle();
+  autosizeFileNameInput();
+}
+document.getElementById('fileNameInput').addEventListener('input', (e)=>{
+  fileName = e.target.value.trim() || APP_NAME;
+  updateTitle();
+  autosizeFileNameInput();
+});
+autosizeFileNameInput();
+
+/* Both YAML and TOML support live entirely as optional, lazily-loaded ES modules —
+   opening/saving plain .json never touches the network or these libraries at all. */
+let yamlLib = null;
+let tomlLib = null;
+async function loadYamlLib(){
+  if(!yamlLib){ yamlLib = await import('https://cdn.jsdelivr.net/npm/js-yaml@5.2.1/+esm'); }
+  return yamlLib;
+}
+async function loadTomlLib(){
+  if(!tomlLib){ tomlLib = await import('https://cdn.jsdelivr.net/npm/js-toml@1.0.3/+esm'); }
+  return tomlLib;
+}
+/* YAML and TOML both support native date/timestamp values, which js-yaml/js-toml resolve
+   into real JS Date objects. Our data model only understands plain JSON types, and a Date
+   would otherwise silently render as an empty object ("Object, 0 props") — so we flatten
+   any Date found anywhere in the parsed tree down to a plain ISO-8601 string on the way in. */
+function sanitizeParsedValue(v){
+  if(v instanceof Date) return v.toISOString();
+  if(Array.isArray(v)) return v.map(sanitizeParsedValue);
+  if(v !== null && typeof v === 'object'){
+    const out = {};
+    for(const k of Object.keys(v)) out[k] = sanitizeParsedValue(v[k]);
+    return out;
+  }
+  return v;
+}
+
+async function parseAndLoad(text, name){
+  let parsed = null;
+  try{
+    parsed = JSON.parse(text);
+  }catch(eJson){
+    const isToml = /\.toml$/i.test(name||'');
+    let lib;
+    try{
+      lib = isToml ? await loadTomlLib() : await loadYamlLib();
+    }catch(eLoad){
+      alert((isToml ? 'TOML' : 'YAML')+' support needs to load an external library and no internet connection is available right now. JSON still works fully offline.');
+      return false;
+    }
+    try{
+      parsed = isToml ? lib.load(text) : lib.load(text, {schema: lib.YAML11_SCHEMA});
+      parsed = sanitizeParsedValue(parsed);
+    }catch(eParse){
+      alert('Could not parse this file as JSON'+(isToml ? ' or TOML.' : ' or YAML.'));
+      return false;
+    }
+  }
+  if(!isObj(parsed)){ alert('Top level of the file must be an object.'); return false; }
+  pushHistory();
+  data = parsed; path = []; navMemory = {};
+  if(name) setFileName(name);
+  render();
+  return true;
+}
+
+async function openViaPicker(){
+  try{
+    const [handle] = await window.showOpenFilePicker({ types:[{ description:'JSON/YAML/TOML', accept:{ 'application/json':['.json'], 'text/yaml':['.yaml','.yml'], 'application/toml':['.toml'] } }] });
+    const file = await handle.getFile();
+    const text = await file.text();
+    if(await parseAndLoad(text, file.name)) fileHandle = handle;
+  }catch(e){ /* cancelled */ }
+}
+document.getElementById('btnOpen').addEventListener('click', ()=>{
+  if(supportsOpenPicker) openViaPicker();
+  else document.getElementById('fileInput').click();
+});
+document.getElementById('fileInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  fileHandle = null;
+  const reader = new FileReader();
+  reader.onload = async ()=>{ await parseAndLoad(reader.result, file.name); };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+document.getElementById('btnNew').addEventListener('click', async ()=>{
+  if(!isDataEmpty()){
+    const ok = await showConfirm('Start a new empty file? Any unsaved changes will be lost unless exported.', {okLabel:'Start new'});
+    if(!ok) return;
+  }
+  pushHistory();
+  data = {}; path = []; navMemory = {}; fileHandle = null;
+  const pick = drawRandomName();
+  setFileName(pick);
+  render();
+});
+
+async function saveFile(forceAs){
+  const content = JSON.stringify(data, null, 2);
+  let suggestedName = fileName + '.json';
+
+  if(forceAs && !supportsSavePicker){
+    // There's no way for page script to open a native "choose folder" dialog in browsers without
+    // the File System Access API (Firefox chief among them) — that part is a genuine platform
+    // limitation, not something fixable from here. What we *can* still offer is the "choose a name"
+    // half of Save As, via a prompt, so it isn't just a silent re-download of the same filename.
+    const chosen = prompt(
+      'Save As — enter a filename.\n\n(Firefox doesn\'t let web pages open a "choose folder" dialog, ' +
+      'so this will land in your default Downloads folder. To pick the folder yourself every time, ' +
+      'turn on "Always ask you where to save files" in Firefox → Settings → General → Downloads.)',
+      suggestedName
+    );
+    if(chosen === null) return; // cancelled
+    let name = chosen.trim() || suggestedName;
+    if(!/\.[a-z0-9]+$/i.test(name)) name += '.json';
+    setFileName(name);
+    download(name, content, 'application/json');
+    return;
+  }
+
+  if(supportsSavePicker && (forceAs || !fileHandle)){
+    try{ fileHandle = await window.showSaveFilePicker({ suggestedName, types:[{ description:'JSON', accept:{ 'application/json':['.json'] } }] }); }
+    catch(e){ return; }
+  }
+  if(supportsSavePicker && fileHandle){
+    try{
+      const writable = await fileHandle.createWritable();
+      await writable.write(content);
+      await writable.close();
+      return;
+    }catch(e){ /* fall through to download */ }
+  }
+  download(suggestedName, content, 'application/json');
+}
+document.getElementById('btnSave').addEventListener('click', ()=>saveFile(false));
+document.getElementById('btnSaveAs').addEventListener('click', ()=>saveFile(true));
+document.getElementById('btnSaveYaml').addEventListener('click', async ()=>{
+  let lib;
+  try{ lib = await loadYamlLib(); }
+  catch(e){ alert('YAML library could not load (no internet connection right now). JSON export still works fully offline.'); return; }
+  download(fileName + '.yaml', lib.dump(data, {schema: lib.YAML11_SCHEMA, noRefs:true, lineWidth:-1}), 'text/yaml');
+});
+document.getElementById('btnSaveToml').addEventListener('click', async ()=>{
+  let lib;
+  try{ lib = await loadTomlLib(); }
+  catch(e){ alert('TOML library could not load (no internet connection right now). JSON export still works fully offline.'); return; }
+  try{
+    download(fileName + '.toml', lib.dump(data), 'application/toml');
+  }catch(e){
+    alert('This data could not be converted to TOML: '+e.message+'\n\nTOML has stricter requirements than JSON — for example, every array must contain only one type of value, and top-level values must be tables (objects).');
+  }
+});
+function download(filename, content, mime){
+  const blob = new Blob([content], {type: mime});
+  downloadBlob(blob, filename);
+}
+// Firefox has no showSaveFilePicker, so it always lands here. Appending the anchor to the
+// DOM *before* setting href/clicking (rather than after) and deferring revokeObjectURL by a tick
+// is the combination that's reliably worked around Firefox's stricter handling of synthetic
+// clicks on blob: URLs; doing the revoke synchronously can race the download starting.
+function downloadBlob(blob, filename){
+  const a = document.createElement('a');
+  document.body.appendChild(a);
+  const url = URL.createObjectURL(blob);
+  a.href = url;
+  if(filename) a.download = filename;
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+/* ================= drag & drop to open ================= */
+const dropzoneEl = document.getElementById('dropzone');
+let dragCounter = 0;
+window.addEventListener('dragenter', (e)=>{
+  if([...e.dataTransfer.types].includes('Files')){ dragCounter++; dropzoneEl.classList.add('show'); }
+});
+window.addEventListener('dragleave', ()=>{ dragCounter--; if(dragCounter<=0){ dragCounter=0; dropzoneEl.classList.remove('show'); } });
+window.addEventListener('dragover', (e)=> e.preventDefault());
+window.addEventListener('drop', async (e)=>{
+  e.preventDefault();
+  dragCounter = 0; dropzoneEl.classList.remove('show');
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(!file) return;
+  fileHandle = null;
+  if(e.dataTransfer.items && e.dataTransfer.items[0] && typeof e.dataTransfer.items[0].getAsFileSystemHandle === 'function'){
+    try{ fileHandle = await e.dataTransfer.items[0].getAsFileSystemHandle(); }catch(err){ fileHandle=null; }
+  }
+  const text = await file.text();
+  await parseAndLoad(text, file.name);
+});
+
+/* ================= raw JSON overlay ================= */
+const overlay = document.getElementById('rawOverlay');
+const rawArea = document.getElementById('rawArea');
+const rawHighlight = document.getElementById('rawHighlight');
+const rawError = document.getElementById('rawError');
+
+const RAW_TOKEN_RE = /("(?:\\u[0-9a-fA-F]{4}|\\.|[^"\\])*"(\s*:)?)|(\b(?:true|false)\b)|(\bnull\b)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function highlightJSON(str){
+  return escapeHtml(str).replace(RAW_TOKEN_RE, (match, stringTok, isKey, boolTok, nullTok, numTok)=>{
+    let cls;
+    if(stringTok !== undefined) cls = isKey ? 'jk' : 'js';
+    else if(boolTok !== undefined) cls = 'jb';
+    else if(nullTok !== undefined) cls = 'jnull';
+    else cls = 'jn';
+    return '<span class="'+cls+'">'+match+'</span>';
+  });
+}
+function refreshRawHighlight(){
+  // trailing newline keeps the highlight layer the same height as the textarea when it ends in \n
+  rawHighlight.innerHTML = highlightJSON(rawArea.value) + '\n';
+}
+rawArea.addEventListener('input', refreshRawHighlight);
+rawArea.addEventListener('scroll', ()=>{
+  rawHighlight.scrollTop = rawArea.scrollTop;
+  rawHighlight.scrollLeft = rawArea.scrollLeft;
+});
+
+document.getElementById('btnRaw').addEventListener('click', ()=>{ rawArea.value = JSON.stringify(data, null, 2); rawError.textContent=""; refreshRawHighlight(); overlay.classList.add('show'); });
+document.getElementById('btnRawClose').addEventListener('click', ()=>overlay.classList.remove('show'));
+document.getElementById('btnRawApply').addEventListener('click', ()=>{
+  try{
+    const parsed = JSON.parse(rawArea.value);
+    if(!isObj(parsed)) throw new Error('top level must be an object');
+    pushHistory(); data = parsed; path = [];
+    rawError.textContent=""; overlay.classList.remove('show'); render();
+  }catch(err){ rawError.textContent = "Invalid JSON: " + err.message; }
+});
+document.getElementById('btnRawCopy').addEventListener('click', ()=>{
+  rawArea.select();
+  try{ navigator.clipboard.writeText(rawArea.value); } catch(e){ document.execCommand('copy'); }
+});
+
+/* ================= settings dock (non-dimming, floating) ================= */
+const settingsDock = document.getElementById('settingsDock');
+function renderSettingsPanel(){
+  const body = document.getElementById('settingsBody');
+  body.innerHTML = '';
+
+  const secInterface = document.createElement('div');
+  secInterface.className = 'settings-section-title'; secInterface.textContent = 'Interface';
+  body.appendChild(secInterface);
+
+  const themeRow = document.createElement('div'); themeRow.className = 'theme-switch';
+  ['dark','light'].forEach(t=>{
+    const b = document.createElement('button'); b.className = 'small' + (settings.theme===t ? ' active' : '');
+    b.textContent = t[0].toUpperCase()+t.slice(1);
+    b.addEventListener('click', ()=>{
+      const prevTheme = settings.theme;
+      const prevVars = THEME_VARS[prevTheme] || THEME_VARS.dark;
+      const nextVars = THEME_VARS[t] || THEME_VARS.dark;
+      // only swap a color along with the theme if the user hasn't customized it away from the
+      // current theme's default — otherwise leave their custom pick alone
+      Object.entries(THEME_LINKED_COLORS).forEach(([key,cssVar])=>{
+        if(settings.colors[key] === prevVars[cssVar]) settings.colors[key] = nextVars[cssVar];
+      });
+      settings.theme = t; applyTheme(); renderSettingsPanel(); render();
+    });
+    themeRow.appendChild(b);
+  });
+  body.appendChild(themeRow);
+
+  const accentRow = document.createElement('div'); accentRow.className = 'color-row';
+  accentRow.innerHTML = '<label>Accent (nav / borders / selection)</label>';
+  const accentPicker = makeColorPicker(settings.colors.accent, (hex)=>{ settings.colors.accent = hex; applyTheme(); });
+  accentRow.appendChild(accentPicker);
+  body.appendChild(accentRow);
+
+  const INTERFACE_COLOR_LABELS = {
+    base: 'Base (app background)',
+    panel: 'Column (panel background)',
+    panelAlt: 'Textbox (input background)',
+    border: 'UI line (borders)',
+    rowHover: 'Selection highlight',
+    text: 'Text',
+    textMuted: 'Text (muted / secondary)'
+  };
+  Object.keys(INTERFACE_COLOR_LABELS).forEach(key=>{
+    const row = document.createElement('div'); row.className = 'color-row';
+    row.innerHTML = `<label>${INTERFACE_COLOR_LABELS[key]}</label>`;
+    const picker = makeColorPicker(settings.colors[key], (hex)=>{ settings.colors[key] = hex; applyTheme(); });
+    row.appendChild(picker);
+    body.appendChild(row);
+  });
+
+  const secColors = document.createElement('div');
+  secColors.className = 'settings-section-title'; secColors.textContent = 'Type colors';
+  body.appendChild(secColors);
+
+  Object.keys(TYPE_LABELS).forEach(t=>{
+    const row = document.createElement('div'); row.className = 'color-row';
+    row.innerHTML = `<label>${TYPE_LABELS[t]} (${t==='list' ? 'array' : t})</label>`;
+    const picker = makeColorPicker(settings.colors[t], (hex)=>{ settings.colors[t] = hex; applyTheme(); render(); });
+    row.appendChild(picker);
+    body.appendChild(row);
+  });
+
+  const secBehavior = document.createElement('div');
+  secBehavior.className = 'settings-section-title'; secBehavior.textContent = 'Behavior';
+  body.appendChild(secBehavior);
+  const toggleRow = document.createElement('div'); toggleRow.className = 'toggle-row';
+  toggleRow.innerHTML = `<input type="checkbox" id="prefillToggle" ${settings.prefillKeyTitle?'checked':''}><label for="prefillToggle">Prefill new list items with key &amp; title</label>`;
+  toggleRow.querySelector('#prefillToggle').addEventListener('change', (e)=>{ settings.prefillKeyTitle = e.target.checked; });
+  body.appendChild(toggleRow);
+}
+const aboutOverlay = document.getElementById('aboutOverlay');
+document.getElementById('btnAbout').addEventListener('click', ()=>{
+  document.getElementById('aboutTitle').textContent = APP_NAME;
+  document.getElementById('aboutVersion').textContent = APP_VERSION;
+  document.getElementById('aboutDate').textContent = APP_RELEASE_DATE;
+  aboutOverlay.classList.add('show');
+});
+document.getElementById('btnAboutClose').addEventListener('click', ()=>aboutOverlay.classList.remove('show'));
+
+document.getElementById('btnSettings').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  renderSettingsPanel();
+  settingsDock.classList.toggle('show');
+});
+document.getElementById('btnSettingsClose').addEventListener('click', ()=>settingsDock.classList.remove('show'));
+document.getElementById('btnResetSettings').addEventListener('click', async ()=>{
+  const ok = await showConfirm('Reset all settings to defaults?', {okLabel:'Reset'});
+  if(!ok) return;
+  settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  applyTheme(); renderSettingsPanel(); render();
+});
+document.getElementById('btnSaveSettings').addEventListener('click', ()=>{
+  download('editor_settings.json', JSON.stringify(settings, null, 2), 'application/json');
+});
+document.getElementById('btnLoadSettings').addEventListener('click', ()=>document.getElementById('settingsFileInput').click());
+document.getElementById('settingsFileInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const parsed = JSON.parse(reader.result);
+      settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+      if(parsed.theme) settings.theme = parsed.theme;
+      if(typeof parsed.prefillKeyTitle === 'boolean') settings.prefillKeyTitle = parsed.prefillKeyTitle;
+      if(parsed.colors) settings.colors = Object.assign(settings.colors, parsed.colors);
+      applyTheme(); renderSettingsPanel(); render();
+    }catch(err){ alert('Could not parse that settings file.'); }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+/* keep settings dock from being closed by the app-wide "click closes popovers" listener */
+settingsDock.addEventListener('click', (e)=>e.stopPropagation());
+
+/* ================= init ================= */
+applyTheme();
+setFileName(APP_NAME);
+render();
+</script>
+</body>
+</html>
