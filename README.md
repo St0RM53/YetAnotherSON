@@ -30,13 +30,15 @@ Nobody i found had combined the last two: real column-based navigation *with* re
 - Full inline editing: rename keys, edit values, add/delete/duplicate/reorder properties and items (drag-and-drop, right-click menu, resizable columns)
 - Convert any value between String / Number / Boolean / Null / Array / Object, with data preserved wherever the conversion allows it
 - Undo/redo, a raw-JSON view with syntax highlighting, and a searchable breadcrumb trail
+- Per column filtering; by name, value, or both
 - Real file Save / Save As (via the File System Access API where supported), plus JSON/YAML/TOML export
 - Fully customizable color palette and light/dark theme, saved and restored as a plain settings file
 - Optional experimental YAML/TOML support, lazily loaded from a CDN only when you actually open or save one of those formats — never on startup, never for JSON
 
 ## Screenshot
 
-<img width="2246" height="1210" alt="image" src="https://github.com/user-attachments/assets/86c34285-c771-4bb3-a956-5d15b17d3da3" />
+<img width="2060" height="1193" alt="Screenshot 2026-07-13 at 23-23-55 YetAnotherSON — YetAnotherSON" src="https://github.com/user-attachments/assets/789cb220-4fa6-4ba0-834b-de4fc0553d71" />
+
 
 ## Usage
 
