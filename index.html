@@ -50,6 +50,18 @@
   .col-head .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--col-accent, var(--accent));}
   .col-head .count{font-size:10px;color:var(--text-faint);font-family:var(--mono);}
   .col-body{flex:1;overflow-y:auto;padding:6px;}
+  .col-filter{padding:7px 10px;border-bottom:1px solid var(--border);flex-shrink:0;}
+  .filter-box{position:relative;}
+  .filter-box input{width:100%;box-sizing:border-box;background:var(--bg-panel-alt);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11.5px;font-family:var(--sans);padding:5px 46px 5px 8px;}
+  .filter-box input:focus{outline:none;border-color:var(--col-accent, var(--accent));}
+  .filter-mode{position:absolute;top:0;bottom:0;margin:auto 0;right:6px;width:16px;height:16px;border:none;background:transparent;color:var(--text-faint);cursor:pointer;font-size:12px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;border-radius:3px;}
+  .filter-mode:hover{background:var(--bg-row-hover);}
+  .filter-mode svg{display:block;}
+  .filter-clear{position:absolute;top:0;bottom:0;margin:auto 0;right:27px;width:16px;height:16px;border:none;background:transparent;color:var(--text-faint);cursor:pointer;font-size:14px;line-height:1;padding:0;display:none;align-items:center;justify-content:center;border-radius:3px;}
+  .filter-clear:hover{color:var(--text);background:var(--bg-row-hover);}
+  .filter-box.has-value .filter-clear{display:flex;}
+  .filter-mode::-moz-focus-inner, .filter-clear::-moz-focus-inner{border:0;padding:0;}
+  .col-empty-filtered{padding:14px 6px;color:var(--text-faint);font-size:11.5px;text-align:center;}
   .col-empty{padding:24px 16px;color:var(--text-faint);font-size:12.5px;line-height:1.5;text-align:center;}
 
   .row-card{border:1px solid var(--border);border-left:3px solid transparent;border-radius:6px;padding:8px 9px;margin-bottom:6px;cursor:grab;background:var(--bg-panel);transition:background .12s,border-color .12s;}
@@ -105,7 +117,7 @@
   .jb{color:var(--hl-boolean,#b48ead);} .jnull{color:var(--hl-null,#8c93a3);}
   .overlay-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;}
   .confirm-panel{width:380px;height:auto;min-width:280px;min-height:0;resize:none;max-width:92vw;}
-  .about-panel{width:420px;}
+  .about-panel{width:460px;}
   .about-body{display:flex;flex-direction:column;gap:10px;}
   .about-title-row{display:flex;align-items:baseline;gap:8px;}
   .about-title{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent);}
@@ -234,6 +246,8 @@
         <div class="about-kbd-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd><span>Redo</span></div>
         <div class="about-kbd-row"><kbd>Right-click</kbd><span>Copy / Duplicate / Paste / Delete</span></div>
         <div class="about-kbd-row"><kbd>Double-click</kbd>On column edge to reset column width</div>
+        <div class="about-kbd-row"><kbd>Esc</kbd><span>Clear a column's filter box (while it's focused)</span></div>
+        <div class="about-kbd-row"><kbd>Double-click</kbd>On a filter box to cycle its mode (name & value/ name / value)</div>
       </div>
       <div class="about-formats">
         <div class="about-label" style="margin-bottom:4px;">Data formats</div>
@@ -278,8 +292,8 @@
 <script>
 /* ================= app identity ================= */
 const APP_NAME = 'YetAnotherSON';
-const APP_VERSION = 'v1.0.0';
-const APP_RELEASE_DATE = '11-07-2026';
+const APP_VERSION = 'v1.0.1';
+const APP_RELEASE_DATE = '13-07-2026';
 const DEFAULT_FILE_NAMES = [
   "SON_IAM_Tired",
   "SON_Please_Compile",
@@ -975,6 +989,77 @@ function attachColumnResizer(col, colIdx){
   col.appendChild(handle);
 }
 
+// remembered per depth (colIdx), in-memory only, so the filter stays applied as you navigate
+// deeper/back, same lifetime as colWidths
+let colFilters = {};
+// 'name' | 'value' | 'both' — remembered per column depth alongside colFilters
+let colFilterModes = {};
+const FILTER_MODES = ['both','name','value'];
+const FILTER_MODE_SVG = {
+  both:  '<svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="6.5" fill="currentColor"/></svg>',
+  name:  '<svg viewBox="0 0 16 16" width="13" height="13"><rect x="2" y="2" width="12" height="12" rx="1.5" fill="currentColor"/></svg>',
+  value: '<svg viewBox="0 0 16 16" width="15" height="15"><polygon points="8,1.5 14.5,14 1.5,14" fill="currentColor"/></svg>'
+};
+const FILTER_MODE_LABEL = { name:'property names', value:'property values', both:'names & values' };
+const FILTER_MODE_PLACEHOLDER = { name:'by name', value:'by value', both:'by name & value' };
+/**
+ * Wires up the filter box for a column. `getRows()` returns the current list of
+ * {el, nameText, valueText} entries to filter over — el is the row element, nameText/valueText
+ * are the lowercase searchable strings used depending on the column's filter mode. `noun` is
+ * "properties" or "items", used to build the placeholder text.
+ */
+function setupColumnFilter(col, colIdx, body, getRows, emptyMessage, noun){
+  const wrap = col.querySelector('.filter-box');
+  const input = col.querySelector('.filter-input');
+  const modeBtn = col.querySelector('.filter-mode');
+  const clearBtn = col.querySelector('.filter-clear');
+  input.value = colFilters[colIdx] || '';
+
+  const noMatch = document.createElement('div');
+  noMatch.className = 'col-empty-filtered';
+  noMatch.textContent = emptyMessage;
+  noMatch.style.display = 'none';
+  body.appendChild(noMatch);
+
+  function mode(){ return colFilterModes[colIdx] || 'both'; }
+  function renderModeBtn(){
+    const m = mode();
+    modeBtn.innerHTML = FILTER_MODE_SVG[m];
+    modeBtn.className = 'filter-mode mode-'+m;
+    modeBtn.title = 'Filtering by: ' + FILTER_MODE_LABEL[m] + ' — click, or double-click the box, to change';
+    input.placeholder = 'Filter ' + noun + ' ' + FILTER_MODE_PLACEHOLDER[m] + '…';
+  }
+  function cycleMode(){
+    const i = FILTER_MODES.indexOf(mode());
+    colFilterModes[colIdx] = FILTER_MODES[(i+1) % FILTER_MODES.length];
+    renderModeBtn(); apply();
+  }
+  function apply(){
+    const q = input.value.trim().toLowerCase();
+    const m = mode();
+    const rows = getRows();
+    let visibleCount = 0;
+    rows.forEach(({el, nameText, valueText})=>{
+      const match = !q ||
+        (m==='name' && nameText.includes(q)) ||
+        (m==='value' && valueText.includes(q)) ||
+        (m==='both' && (nameText.includes(q) || valueText.includes(q)));
+      el.style.display = match ? '' : 'none';
+      if(match) visibleCount++;
+    });
+    noMatch.style.display = (q && visibleCount===0 && rows.length>0) ? '' : 'none';
+    wrap.classList.toggle('has-value', input.value.length>0);
+  }
+  function clear(){ input.value=''; colFilters[colIdx]=''; apply(); }
+  input.addEventListener('input', ()=>{ colFilters[colIdx] = input.value; apply(); });
+  input.addEventListener('keydown', (e)=>{ if(e.key==='Escape'){ clear(); input.blur(); } });
+  input.addEventListener('dblclick', (e)=>{ e.preventDefault(); cycleMode(); });
+  modeBtn.addEventListener('click', ()=>{ cycleMode(); input.focus(); });
+  clearBtn.addEventListener('click', ()=>{ clear(); input.focus(); });
+  renderModeBtn();
+  apply();
+}
+
 
 /* ---- object column ---- */
 function renderObjectColumn(obj, curPath, colIdx){
@@ -983,6 +1068,7 @@ function renderObjectColumn(obj, curPath, colIdx){
   col.style.setProperty('--col-accent', curPath.length===0 ? settings.colors.accent : settings.colors.object);
   const label = curPath.length===0 ? 'Root' : (typeof curPath[curPath.length-1]==='number' ? detectSummary(obj).text : String(curPath[curPath.length-1]));
   col.innerHTML = `<div class="col-head"><span class="label">${escapeHtml(label)}</span><span class="count">${Object.keys(obj).length} props</span></div>
+    <div class="col-filter"><div class="filter-box"><input type="text" class="filter-input" spellcheck="false"><button type="button" class="filter-clear" title="Clear filter">✕</button><button type="button" class="filter-mode" title="Filter mode"></button></div></div>
     <div class="col-body"></div>
     <div class="col-footer">
       <button id="addPropBtn">+ Add property</button>
@@ -1002,11 +1088,14 @@ function renderObjectColumn(obj, curPath, colIdx){
 
   if(entries.length===0){ body.innerHTML = '<div class="col-empty">No properties yet. Add one below, or right-click for paste.</div>'; }
 
+  const filterRows = [];
   entries.forEach(([key,val], idx)=>{
     const row = document.createElement('div');
     row.className = 'prop-row';
     row.draggable = true;
     if(selectedStep === key) row.style.borderColor = 'var(--accent)';
+    const filterEntry = { el: row, nameText: key.toLowerCase(), valueText: '' };
+    filterRows.push(filterEntry);
 
     const curType = getType(val);
     const typeSel = buildTypeSelect(curType);
@@ -1019,19 +1108,22 @@ function renderObjectColumn(obj, curPath, colIdx){
     if(isScalar(val)){
       const valInput = document.createElement('input');
       valInput.className = 'prop-value'; valInput.value = scalarToText(val);
-      valInput.addEventListener('input', ()=>{ obj[key] = parseScalarInput(valInput.value); });
+      valInput.addEventListener('input', ()=>{ obj[key] = parseScalarInput(valInput.value); filterEntry.valueText = valInput.value.toLowerCase(); });
       trackInputHistory(valInput);
       row.appendChild(valInput);
+      filterEntry.valueText = scalarToText(val).toLowerCase();
     } else if(isArr(val)){
       const btn = document.createElement('button');
       btn.className = 'open-btn'; btn.textContent = '→ ' + val.length + ' item' + (val.length===1?'':'s');
       btn.addEventListener('click', ()=> goTo(colIdx, key));
       row.appendChild(btn);
+      filterEntry.valueText = btn.textContent.toLowerCase();
     } else if(isObj(val)){
       const btn = document.createElement('button');
       btn.className = 'open-btn'; btn.textContent = '→ ' + Object.keys(val).length + ' propert' + (Object.keys(val).length===1?'y':'ies');
       btn.addEventListener('click', ()=> goTo(colIdx, key));
       row.appendChild(btn);
+      filterEntry.valueText = btn.textContent.toLowerCase();
     }
 
     typeSel.addEventListener('change', async ()=>{
@@ -1053,6 +1145,7 @@ function renderObjectColumn(obj, curPath, colIdx){
       const rebuilt = rebuildObjectKeys(obj, newEntries);
       Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
       if(wasSelected && path[colIdx] !== undefined){ path[colIdx] = keyInput.value; }
+      filterEntry.nameText = keyInput.value.toLowerCase();
       renderBreadcrumb();
     });
     keyInput.addEventListener('blur', ()=>{
@@ -1110,6 +1203,8 @@ function renderObjectColumn(obj, curPath, colIdx){
     body.appendChild(row);
   });
 
+  setupColumnFilter(col, colIdx, body, ()=>filterRows, 'No properties match your filter.', 'properties');
+
   body.addEventListener('contextmenu', (e)=>{
     if(e.__handled) return;
     e.preventDefault(); e.__handled = true;
@@ -1150,6 +1245,7 @@ function renderArrayColumn(arr, curPath, colIdx){
   col.style.setProperty('--col-accent', settings.colors.list);
   const label = String(curPath[curPath.length-1]);
   col.innerHTML = `<div class="col-head"><span class="label">${escapeHtml(label)}</span><span class="count">${arr.length}</span></div>
+    <div class="col-filter"><div class="filter-box"><input type="text" class="filter-input" spellcheck="false"><button type="button" class="filter-clear" title="Clear filter">✕</button><button type="button" class="filter-mode" title="Filter mode"></button></div></div>
     <div class="col-body"></div>
     <div class="col-footer">
       <button id="addItemBtn">+ Add item</button>
@@ -1160,11 +1256,14 @@ function renderArrayColumn(arr, curPath, colIdx){
 
   if(arr.length===0){ body.innerHTML = '<div class="col-empty">No items yet. Add one below, or right-click for paste.</div>'; }
 
+  const filterRows = [];
   arr.forEach((item, idx)=>{
     const row = document.createElement('div');
     row.className = 'row-card' + (selectedStep===idx ? ' selected':'');
     row.draggable = true;
     const curType = getType(item);
+    const filterEntry = { el: row, nameText: String(idx), valueText: '' };
+    filterRows.push(filterEntry);
 
     const top = document.createElement('div');
     top.className = 'row-top';
@@ -1179,11 +1278,13 @@ function renderArrayColumn(arr, curPath, colIdx){
       top.appendChild(titleInput);
       if(hasAddr){ const badge=document.createElement('span'); badge.className='addr-badge'; badge.textContent=item.addr; top.appendChild(badge); }
       row.appendChild(top);
+      filterEntry.nameText = (item.key||String(idx)).toLowerCase();
+      filterEntry.valueText = summary.text.toLowerCase();
       if(typeof item.key === 'string'){
         const keyInput = document.createElement('input');
         keyInput.className = 'key-input'; keyInput.value = item.key; keyInput.placeholder = 'key';
         keyInput.addEventListener('focus', ()=>goTo(colIdx, idx));
-        keyInput.addEventListener('input', ()=>{ item.key = keyInput.value; });
+        keyInput.addEventListener('input', ()=>{ item.key = keyInput.value; filterEntry.nameText = keyInput.value.toLowerCase(); });
         trackInputHistory(keyInput);
         row.appendChild(keyInput);
       }
@@ -1191,6 +1292,7 @@ function renderArrayColumn(arr, curPath, colIdx){
       titleInput.addEventListener('focus', ()=>goTo(colIdx, idx));
       titleInput.addEventListener('input', ()=>{
         if(summary.prop){ item[summary.prop] = titleInput.value; } else { item.title = titleInput.value; }
+        filterEntry.valueText = titleInput.value.toLowerCase();
         renderBreadcrumb();
       });
       trackInputHistory(titleInput);
@@ -1199,12 +1301,14 @@ function renderArrayColumn(arr, curPath, colIdx){
       label2.className = 'open-btn'; label2.textContent = '→ ' + item.length + ' item'+(item.length===1?'':'s');
       label2.addEventListener('click', ()=> goTo(colIdx, idx));
       top.appendChild(label2); row.appendChild(top);
+      filterEntry.valueText = label2.textContent.toLowerCase();
     } else {
       const valInput = document.createElement('input');
       valInput.className = 'title-input'; valInput.value = scalarToText(item); valInput.placeholder = 'value';
-      valInput.addEventListener('input', ()=>{ arr[idx] = parseScalarInput(valInput.value); });
+      valInput.addEventListener('input', ()=>{ arr[idx] = parseScalarInput(valInput.value); filterEntry.valueText = valInput.value.toLowerCase(); });
       trackInputHistory(valInput);
       top.appendChild(valInput); row.appendChild(top);
+      filterEntry.valueText = scalarToText(item).toLowerCase();
     }
 
     typeSel.addEventListener('change', async ()=>{
@@ -1258,6 +1362,8 @@ function renderArrayColumn(arr, curPath, colIdx){
 
     body.appendChild(row);
   });
+
+  setupColumnFilter(col, colIdx, body, ()=>filterRows, 'No items match your filter.', 'items');
 
   body.addEventListener('contextmenu', (e)=>{
     if(e.__handled) return;
@@ -1375,7 +1481,7 @@ async function parseAndLoad(text, name){
   }
   if(!isObj(parsed)){ alert('Top level of the file must be an object.'); return false; }
   pushHistory();
-  data = parsed; path = []; navMemory = {};
+  data = parsed; path = []; navMemory = {}; colFilters = {}; colFilterModes = {};
   if(name) setFileName(name);
   render();
   return true;
@@ -1409,7 +1515,7 @@ document.getElementById('btnNew').addEventListener('click', async ()=>{
     if(!ok) return;
   }
   pushHistory();
-  data = {}; path = []; navMemory = {}; fileHandle = null;
+  data = {}; path = []; navMemory = {}; colFilters = {}; colFilterModes = {}; fileHandle = null;
   const pick = drawRandomName();
   setFileName(pick);
   render();
