@@ -310,8 +310,8 @@
 <script>
 /* ================= app identity ================= */
 const APP_NAME = 'YetAnotherSON';
-const APP_VERSION = 'v1.0.3';
-const APP_RELEASE_DATE = '15-07-2026';
+const APP_VERSION = 'v1.0.4';
+const APP_RELEASE_DATE = '16-07-2026';
 const DEFAULT_FILE_NAMES = [
   "SON_IAM_Tired",
   "SON_Please_Compile",
@@ -756,12 +756,17 @@ function arrayToObject(arr){
 function detectSummary(item){
   if(isObj(item)){
     const keys = Object.keys(item);
-    if(keys.length>0){
-      const firstKey = keys[0];
-      const firstVal = item[firstKey];
+    // "key" is array-item metadata (shown in the array column's key input), not a real child
+    // property -- so skip it when choosing the summary. Otherwise an item whose first child is
+    // "key" would show the key as its title, and since key is not a movable child in the object
+    // column the user could never promote another property to first.
+    const isArrItem = typeof item.key === 'string';
+    const firstRealKey = keys.find(k => !(isArrItem && k === 'key'));
+    if(firstRealKey !== undefined){
+      const firstVal = item[firstRealKey];
       if(isScalar(firstVal)){
         const text = scalarToText(firstVal);
-        if(text.trim() !== '') return {text, prop:firstKey};
+        if(text.trim() !== '') return {text, prop:firstRealKey};
       }
     }
     if(typeof item.key==='string') return {text:item.key, prop:null};
