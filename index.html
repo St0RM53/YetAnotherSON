@@ -292,8 +292,8 @@
 <script>
 /* ================= app identity ================= */
 const APP_NAME = 'YetAnotherSON';
-const APP_VERSION = 'v1.0.1';
-const APP_RELEASE_DATE = '13-07-2026';
+const APP_VERSION = 'v1.0.2';
+const APP_RELEASE_DATE = '15-07-2026';
 const DEFAULT_FILE_NAMES = [
   "SON_IAM_Tired",
   "SON_Please_Compile",
@@ -921,6 +921,20 @@ function renderBreadcrumb(){
   const trace = document.createElement('div'); trace.className='trace';
   bc.appendChild(trace);
 }
+
+// rows are draggable (for drag-to-reorder), but a draggable ancestor hijacks the browser's
+// native "place caret at click position" behavior in child <input>/<select> elements — clicks
+// land the cursor at the end instead. Suspending draggable for the row while the pointer is down
+// on one of its fields sidesteps that without giving up drag-to-reorder on the rest of the row.
+document.addEventListener('mousedown', (e)=>{
+  const row = e.target.closest('.prop-row, .row-card');
+  if(row && (e.target.tagName==='INPUT' || e.target.tagName==='SELECT' || e.target.tagName==='TEXTAREA')){
+    row.draggable = false;
+  }
+});
+document.addEventListener('mouseup', ()=>{
+  document.querySelectorAll('.prop-row[draggable="false"], .row-card[draggable="false"]').forEach(r=>{ r.draggable = true; });
+});
 
 function renderColumns(){
   const root = document.getElementById('columns');
