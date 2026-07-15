@@ -22,6 +22,8 @@
   input.filename-input:focus{outline:none;border-bottom:1px solid var(--accent);}
   .ext{color:var(--text-faint);font-family:var(--mono);font-size:13px;}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .multi-delete-controls{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;}
+  .multi-delete-controls #multiDeleteLabel{color:var(--text-muted);font-size:12px;white-space:nowrap;}
   button{font-family:var(--sans);font-size:12.5px;background:var(--bg-panel-alt);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 12px;cursor:pointer;transition:border-color .12s,background .12s;}
   button:hover{background:var(--bg-row-hover);border-color:#3a4150;}
   button:active{transform:translateY(1px);}
@@ -30,7 +32,15 @@
   button.primary{border-color:var(--accent);color:var(--accent);}
   button.primary:hover{background:var(--accent-dim);}
   button.ghost{background:transparent;border-color:transparent;color:var(--text-muted);}
+  .toolbar button.ghost{background:var(--bg-panel-alt);border-color:var(--border);color:var(--text);}
+  .toolbar button.ghost:hover{background:var(--bg-row-hover);border-color:#3a4150;}
   button.ghost:hover{color:var(--text);background:var(--bg-row-hover);}
+  button.danger-btn{border-color:var(--danger);color:var(--danger);}
+  button.danger-btn:hover{background:var(--danger);color:#fff;}
+  .prop-row.multi-select-mode, .row-card.multi-select-mode{cursor:pointer;}
+  .prop-row.multi-select-mode input, .prop-row.multi-select-mode select, .prop-row.multi-select-mode button,
+  .row-card.multi-select-mode input, .row-card.multi-select-mode select, .row-card.multi-select-mode button{pointer-events:none;}
+  .prop-row.multi-picked, .row-card.multi-picked{outline:2px solid var(--danger);outline-offset:-1px;background:var(--bg-row-hover);}
   button.small{padding:3px 8px;font-size:11px;border-radius:5px;}
   button.icon-btn{padding:7px 10px;font-size:15px;line-height:1;}
   .divider{width:1px;height:20px;background:var(--border);margin:0 2px;}
@@ -87,6 +97,8 @@
   .prop-row input.prop-value:focus{outline:none;border-color:#b48ead;}
   .prop-row .open-btn{flex:1;min-width:0;text-align:left;background:var(--bg-panel-alt);border:1px solid var(--border);color:var(--text);font-size:11.5px;padding:5px 8px;border-radius:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .prop-row .open-btn:hover{background:var(--bg-row-hover);}
+  .prop-row input.nested-key-input{width:76px;flex-shrink:0;min-width:0;background:var(--bg-panel-alt);border:1px solid var(--border);color:var(--text-muted);border-radius:5px;padding:5px 6px;font-size:10.5px;font-family:var(--mono);}
+  .prop-row input.nested-key-input:focus{outline:none;color:var(--text);border-color:var(--col-accent, var(--accent));}
 
   .type-select{flex-shrink:0;width:56px;font-family:var(--mono);font-size:10px;font-weight:700;text-align:center;border-radius:5px;border:1px solid var(--border);padding:5px 2px;cursor:pointer;}
   .row-top .type-select{width:52px;}
@@ -187,6 +199,12 @@
     <span class="ext">.json</span>
   </div>
   <div class="toolbar">
+    <div class="multi-delete-controls" id="multiDeleteControls" style="display:none;">
+      <span id="multiDeleteLabel"></span>
+      <button class="danger-btn" id="btnMultiDeleteConfirm">Delete selected</button>
+      <button id="btnMultiDeleteCancel">Cancel</button>
+    </div>  
+    <div class="divider" id="multiDeleteDivider" style="display:none;"></div>
     <input type="file" id="fileInput" accept=".json,.yaml,.yml,.toml">
     <button class="ghost" id="btnNew">New</button>
     <button class="ghost" id="btnOpen">Open</button>
@@ -292,7 +310,7 @@
 <script>
 /* ================= app identity ================= */
 const APP_NAME = 'YetAnotherSON';
-const APP_VERSION = 'v1.0.2';
+const APP_VERSION = 'v1.0.3';
 const APP_RELEASE_DATE = '15-07-2026';
 const DEFAULT_FILE_NAMES = [
   "SON_IAM_Tired",
@@ -737,7 +755,15 @@ function arrayToObject(arr){
 }
 function detectSummary(item){
   if(isObj(item)){
-    for(const k of ['title','label','name']) if(typeof item[k]==='string') return {text:item[k], prop:k};
+    const keys = Object.keys(item);
+    if(keys.length>0){
+      const firstKey = keys[0];
+      const firstVal = item[firstKey];
+      if(isScalar(firstVal)){
+        const text = scalarToText(firstVal);
+        if(text.trim() !== '') return {text, prop:firstKey};
+      }
+    }
     if(typeof item.key==='string') return {text:item.key, prop:null};
     return {text:'(untitled)', prop:null};
   }
@@ -763,6 +789,8 @@ function updateHistoryButtons(){
   document.getElementById('btnUndo').disabled = history.length===0;
   document.getElementById('btnRedo').disabled = future.length===0;
 }
+document.getElementById('btnUndo').addEventListener('click', undo);
+document.getElementById('btnRedo').addEventListener('click', redo);
 function trackInputHistory(inputEl){
   inputEl.addEventListener('focus', ()=>{ pendingSnapshot = snapshot(); });
   inputEl.addEventListener('blur', ()=>{
@@ -844,6 +872,7 @@ window.addEventListener('keydown', e=>{
 // away to a sibling and then back restores the deeper navigation instead of collapsing it
 let navMemory = {};
 function goTo(colIndex, step){
+  multiDeleteMode = null;
   const prefix = path.slice(0, colIndex);
   navMemory[JSON.stringify(prefix)] = step;
   path = prefix.concat([step]);
@@ -869,6 +898,79 @@ function extendPathFromMemory(){
 function truncateAfterEdit(colIndex){ path = path.slice(0, colIndex); }
 function pathStepAt(colIdx){ return path.length > colIdx ? path[colIdx] : undefined; }
 
+/* ================= multi-select delete ================= */
+// { colIdx, selected: Set<key|index> } — only one column can be in this mode at a time
+let multiDeleteMode = null;
+function getNodeAtColIdx(colIdx){
+  let node = data;
+  for(let i=0;i<colIdx;i++){ if(node==null) return null; node = node[path[i]]; }
+  return node;
+}
+function enterMultiDeleteMode(){ multiDeleteMode = { colIdx:null, selected:new Set() }; render(); }
+function exitMultiDeleteMode(){ multiDeleteMode = null; render(); }
+function updateMultiDeleteToolbar(){
+  const active = !!multiDeleteMode;
+  const n = active ? multiDeleteMode.selected.size : 0;
+  document.getElementById('multiDeleteDivider').style.display = active ? '' : 'none';
+  document.getElementById('multiDeleteControls').style.display = active ? '' : 'none';
+  document.getElementById('multiDeleteLabel').textContent = active ? (n>0 ? (n+' selected') : 'Click items to select…') : '';
+  const confirmBtn = document.getElementById('btnMultiDeleteConfirm');
+  confirmBtn.disabled = n===0;
+}
+// applies selectable/selected styling to a row and wires its click-to-toggle behavior. Before
+// anything is picked, every column is selectable; the first pick locks selection to that
+// column (other columns go back to behaving normally), and it unlocks again if the selection
+// is emptied back out.
+function applyMultiSelectState(row, colIdx, stepKey){
+  if(!multiDeleteMode) return;
+  if(multiDeleteMode.colIdx !== null && multiDeleteMode.colIdx !== colIdx) return;
+  row.draggable = false;
+  row.classList.add('multi-select-mode');
+  if(multiDeleteMode.selected.has(stepKey)) row.classList.add('multi-picked');
+  row.addEventListener('click', (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const wasLocked = multiDeleteMode.colIdx !== null;
+    if(multiDeleteMode.selected.has(stepKey)){
+      multiDeleteMode.selected.delete(stepKey);
+    } else {
+      multiDeleteMode.colIdx = colIdx;
+      multiDeleteMode.selected.add(stepKey);
+    }
+    const nowLocked = multiDeleteMode.selected.size > 0;
+    if(!nowLocked) multiDeleteMode.colIdx = null;
+    if(wasLocked !== nowLocked){
+      render(); // lock state changed — other columns' selectability needs to update
+    } else {
+      row.classList.toggle('multi-picked');
+      updateMultiDeleteToolbar();
+    }
+  });
+}
+document.getElementById('btnMultiDeleteCancel').addEventListener('click', exitMultiDeleteMode);
+document.getElementById('btnMultiDeleteConfirm').addEventListener('click', async ()=>{
+  if(!multiDeleteMode || multiDeleteMode.selected.size===0) return;
+  const n = multiDeleteMode.selected.size;
+  const ok = await showConfirm('Delete '+n+' selected item'+(n===1?'':'s')+'?', {okLabel:'Delete', danger:true});
+  if(!ok) return;
+  const colIdx = multiDeleteMode.colIdx;
+  const node = getNodeAtColIdx(colIdx);
+  if(node){
+    pushHistory();
+    if(isArr(node)){
+      Array.from(multiDeleteMode.selected).sort((a,b)=>b-a).forEach(i=> node.splice(i,1));
+      // indices shift on delete, so any deeper navigation through this array can no longer be
+      // trusted to point at the same item — same conservative call as drag-reorder makes
+      truncateAfterEdit(colIdx);
+    } else if(isObj(node)){
+      const wasOnPath = multiDeleteMode.selected.has(pathStepAt(colIdx));
+      multiDeleteMode.selected.forEach(k=> delete node[k]);
+      if(wasOnPath) truncateAfterEdit(colIdx);
+    }
+  }
+  multiDeleteMode = null;
+  render();
+});
+
 /* ================= scroll preservation ================= */
 function captureScroll(){
   const map = {};
@@ -887,6 +989,7 @@ function render(){
   renderColumns();
   restoreScroll(scrollMap);
   updateHistoryButtons();
+  updateMultiDeleteToolbar();
 }
 
 function renderLegend(){
@@ -900,7 +1003,7 @@ function renderBreadcrumb(){
   bc.innerHTML = '';
   const rootBtn = document.createElement('button');
   rootBtn.className = 'crumb'; rootBtn.textContent = 'root';
-  rootBtn.addEventListener('click', ()=>{ path = []; render(); });
+  rootBtn.addEventListener('click', ()=>{ multiDeleteMode = null; path = []; render(); });
   bc.appendChild(rootBtn);
 
   let node = data;
@@ -913,7 +1016,7 @@ function renderBreadcrumb(){
     const btn = document.createElement('button');
     btn.className = 'crumb'; btn.textContent = label;
     const truncateLen = i+1;
-    btn.addEventListener('click', ()=>{ path = path.slice(0, truncateLen); render(); });
+    btn.addEventListener('click', ()=>{ multiDeleteMode = null; path = path.slice(0, truncateLen); render(); });
     bc.appendChild(btn);
     node = next;
     if(node===undefined) break;
@@ -1081,7 +1184,13 @@ function renderObjectColumn(obj, curPath, colIdx){
   col.className = 'col';
   col.style.setProperty('--col-accent', curPath.length===0 ? settings.colors.accent : settings.colors.object);
   const label = curPath.length===0 ? 'Root' : (typeof curPath[curPath.length-1]==='number' ? detectSummary(obj).text : String(curPath[curPath.length-1]));
-  col.innerHTML = `<div class="col-head"><span class="label">${escapeHtml(label)}</span><span class="count">${Object.keys(obj).length} props</span></div>
+  // this object's own 'key' field (if present) is redundant with the editable key box already
+  // shown on the parent row that represents it — an array item's row (existing) or an
+  // object-property row (added for this) — so it's hidden here to avoid two out-of-sync
+  // editors for the same value. Root has no parent row to relocate it to, so it stays.
+  const hasParentRow = curPath.length>0;
+  const entries = Object.entries(obj).filter(([k])=> !(hasParentRow && k==='key'));
+  col.innerHTML = `<div class="col-head"><span class="label">${escapeHtml(label)}</span><span class="count">${entries.length} props</span></div>
     <div class="col-filter"><div class="filter-box"><input type="text" class="filter-input" spellcheck="false"><button type="button" class="filter-clear" title="Clear filter">✕</button><button type="button" class="filter-mode" title="Filter mode"></button></div></div>
     <div class="col-body"></div>
     <div class="col-footer">
@@ -1097,17 +1206,20 @@ function renderObjectColumn(obj, curPath, colIdx){
       </div>
     </div>`;
   const body = col.querySelector('.col-body');
-  const entries = Object.entries(obj);
   const selectedStep = pathStepAt(colIdx);
 
   if(entries.length===0){ body.innerHTML = '<div class="col-empty">No properties yet. Add one below, or right-click for paste.</div>'; }
 
   const filterRows = [];
   entries.forEach(([key,val], idx)=>{
+    // position within the *full* object (entries here may have 'key' filtered out above, so
+    // idx alone can be off-by-one from the real position used for splice/rename operations)
+    const trueIdx = Object.keys(obj).indexOf(key);
     const row = document.createElement('div');
     row.className = 'prop-row';
     row.draggable = true;
     if(selectedStep === key) row.style.borderColor = 'var(--accent)';
+    applyMultiSelectState(row, colIdx, key);
     const filterEntry = { el: row, nameText: key.toLowerCase(), valueText: '' };
     filterRows.push(filterEntry);
 
@@ -1122,7 +1234,7 @@ function renderObjectColumn(obj, curPath, colIdx){
     if(isScalar(val)){
       const valInput = document.createElement('input');
       valInput.className = 'prop-value'; valInput.value = scalarToText(val);
-      valInput.addEventListener('input', ()=>{ obj[key] = parseScalarInput(valInput.value); filterEntry.valueText = valInput.value.toLowerCase(); });
+      valInput.addEventListener('input', ()=>{ obj[key] = parseScalarInput(valInput.value); filterEntry.valueText = valInput.value.toLowerCase(); renderBreadcrumb(); });
       trackInputHistory(valInput);
       row.appendChild(valInput);
       filterEntry.valueText = scalarToText(val).toLowerCase();
@@ -1138,6 +1250,22 @@ function renderObjectColumn(obj, curPath, colIdx){
       btn.addEventListener('click', ()=> goTo(colIdx, key));
       row.appendChild(btn);
       filterEntry.valueText = btn.textContent.toLowerCase();
+      const nestedKeyInput = document.createElement('input');
+      nestedKeyInput.className = 'nested-key-input';
+      nestedKeyInput.value = typeof val.key === 'string' ? val.key : "";
+      nestedKeyInput.placeholder = 'key';
+      nestedKeyInput.addEventListener('input', ()=>{
+      const text = nestedKeyInput.value;
+      if(text.trim() === ""){
+        delete val.key;
+      }else{
+        val.key = text;
+      }
+        filterEntry.valueText = (btn.textContent + ' ' + text).toLowerCase();
+        renderBreadcrumb();
+      });
+      trackInputHistory(nestedKeyInput);
+      row.appendChild(nestedKeyInput);
     }
 
     typeSel.addEventListener('change', async ()=>{
@@ -1154,11 +1282,14 @@ function renderObjectColumn(obj, curPath, colIdx){
     keyInput.addEventListener('focus', ()=>{ pendingSnapshot = snapshot(); });
     keyInput.addEventListener('input', ()=>{
       const newEntries = Object.entries(obj);
-      const wasSelected = pathStepAt(colIdx) === key;
-      newEntries[idx][0] = keyInput.value;
+      // read the current key fresh off the live object: the closure `key` is frozen at render
+      // time and goes stale the moment the property is renamed, which would freeze navigation
+      const curKey = newEntries[trueIdx][0];
+      newEntries[trueIdx][0] = keyInput.value;
       const rebuilt = rebuildObjectKeys(obj, newEntries);
+      const newKey = Object.keys(rebuilt)[trueIdx];
       Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
-      if(wasSelected && path[colIdx] !== undefined){ path[colIdx] = keyInput.value; }
+      if(pathStepAt(colIdx) === curKey && path[colIdx] !== undefined){ path[colIdx] = newKey; }
       filterEntry.nameText = keyInput.value.toLowerCase();
       renderBreadcrumb();
     });
@@ -1167,6 +1298,13 @@ function renderObjectColumn(obj, curPath, colIdx){
         history.push(pendingSnapshot); if(history.length>100) history.shift(); future=[]; updateHistoryButtons();
       }
       pendingSnapshot = null;
+      // a rename mutates the model on each keystroke without re-rendering the column (re-rendering
+      // mid-keystroke would yank focus out of the field), so the sibling value/type/drag/contextmenu
+      // handlers keep referencing the stale key name. If the name actually changed, re-render on
+      // blur so those closures rebuild with the current key -- every subsequent interaction (click
+      // the value field, right-click, drag, Tab, navigate) blurs the input first, so no handler can
+      // ever see a stale key. rebuildObjectKeys preserves order, so trueIdx still tracks this entry.
+      if(Object.keys(obj)[trueIdx] !== key){ render(); }
     });
 
     row.addEventListener('dragstart', (e)=>{ dragRef = {containerObj:obj, key}; e.dataTransfer.effectAllowed='move'; });
@@ -1194,7 +1332,7 @@ function renderObjectColumn(obj, curPath, colIdx){
             pushHistory();
             const dupKey = uniqueKey(key+'_copy', Object.keys(obj));
             const cur = Object.entries(obj);
-            const rebuilt = rebuildObjectKeys(obj, [...cur.slice(0,idx+1), [dupKey, JSON.parse(JSON.stringify(val))], ...cur.slice(idx+1)]);
+            const rebuilt = rebuildObjectKeys(obj, [...cur.slice(0,trueIdx+1), [dupKey, JSON.parse(JSON.stringify(val))], ...cur.slice(trueIdx+1)]);
             Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
             render();
         }},
@@ -1231,7 +1369,9 @@ function renderObjectColumn(obj, curPath, colIdx){
           obj[newKey] = JSON.parse(JSON.stringify(clipboard.data));
           render();
       }},
-      { label:'+ Add property', onClick: ()=>{ col.querySelector('#addPropForm').classList.add('show'); col.querySelector('#addPropName').focus(); } }
+      { label:'+ Add property', onClick: ()=>{ col.querySelector('#addPropForm').classList.add('show'); col.querySelector('#addPropName').focus(); } },
+      { sep:true },
+      { label:'Delete multiple…', danger:true, onClick: ()=> enterMultiDeleteMode() }
     ]);
   });
 
@@ -1275,6 +1415,7 @@ function renderArrayColumn(arr, curPath, colIdx){
     const row = document.createElement('div');
     row.className = 'row-card' + (selectedStep===idx ? ' selected':'');
     row.draggable = true;
+    applyMultiSelectState(row, colIdx, idx);
     const curType = getType(item);
     const filterEntry = { el: row, nameText: String(idx), valueText: '' };
     filterRows.push(filterEntry);
@@ -1294,16 +1435,25 @@ function renderArrayColumn(arr, curPath, colIdx){
       row.appendChild(top);
       filterEntry.nameText = (item.key||String(idx)).toLowerCase();
       filterEntry.valueText = summary.text.toLowerCase();
-      if(typeof item.key === 'string'){
-        const keyInput = document.createElement('input');
-        keyInput.className = 'key-input'; keyInput.value = item.key; keyInput.placeholder = 'key';
-        keyInput.addEventListener('focus', ()=>goTo(colIdx, idx));
-        keyInput.addEventListener('input', ()=>{ item.key = keyInput.value; filterEntry.nameText = keyInput.value.toLowerCase(); });
-        trackInputHistory(keyInput);
-        row.appendChild(keyInput);
-      }
-      row.addEventListener('click', (e)=>{ if(e.target.tagName!=='INPUT' && e.target.tagName!=='SELECT') goTo(colIdx, idx); });
-      titleInput.addEventListener('focus', ()=>goTo(colIdx, idx));
+      
+      const keyInput = document.createElement('input');
+      keyInput.className = 'key-input'; keyInput.value = typeof item.key === 'string' ? item.key : ''; keyInput.placeholder = 'key';
+      keyInput.addEventListener('focus', ()=>{ if(pathStepAt(colIdx) !== idx) goTo(colIdx, idx); });
+      keyInput.addEventListener('input', ()=>{
+        const text = keyInput.value;
+        if(text.trim() === ""){
+          delete item.key;
+        } else {
+          item.key = text;
+        }
+        filterEntry.nameText = text.toLowerCase();
+        renderBreadcrumb();
+      });
+      trackInputHistory(keyInput);
+      row.appendChild(keyInput);
+      
+      row.addEventListener('click', (e)=>{ if(multiDeleteMode && multiDeleteMode.colIdx===colIdx) return; if(e.target.tagName!=='INPUT' && e.target.tagName!=='SELECT') goTo(colIdx, idx); });
+      titleInput.addEventListener('focus', ()=>{ if(pathStepAt(colIdx) !== idx) goTo(colIdx, idx); });
       titleInput.addEventListener('input', ()=>{
         if(summary.prop){ item[summary.prop] = titleInput.value; } else { item.title = titleInput.value; }
         filterEntry.valueText = titleInput.value.toLowerCase();
@@ -1319,7 +1469,7 @@ function renderArrayColumn(arr, curPath, colIdx){
     } else {
       const valInput = document.createElement('input');
       valInput.className = 'title-input'; valInput.value = scalarToText(item); valInput.placeholder = 'value';
-      valInput.addEventListener('input', ()=>{ arr[idx] = parseScalarInput(valInput.value); filterEntry.valueText = valInput.value.toLowerCase(); });
+      valInput.addEventListener('input', ()=>{ arr[idx] = parseScalarInput(valInput.value); filterEntry.valueText = valInput.value.toLowerCase(); renderBreadcrumb(); });
       trackInputHistory(valInput);
       top.appendChild(valInput); row.appendChild(top);
       filterEntry.valueText = scalarToText(item).toLowerCase();
@@ -1390,7 +1540,9 @@ function renderArrayColumn(arr, curPath, colIdx){
           if(isObj(copy) && typeof copy.key==='string'){ copy.key = uniqueKey(copy.key+'_copy', arr.filter(isObj).map(x=>x.key)); }
           arr.push(copy); render();
       }},
-      { label:'+ Add item', onClick: ()=>{ col.querySelector('#addItemBtn').click(); } }
+      { label:'+ Add item', onClick: ()=>{ col.querySelector('#addItemBtn').click(); } },
+      { sep:true },
+      { label:'Delete multiple…', danger:true, onClick: ()=> enterMultiDeleteMode() }
     ]);
   });
 
@@ -1495,7 +1647,7 @@ async function parseAndLoad(text, name){
   }
   if(!isObj(parsed)){ alert('Top level of the file must be an object.'); return false; }
   pushHistory();
-  data = parsed; path = []; navMemory = {}; colFilters = {}; colFilterModes = {};
+  data = parsed; path = []; navMemory = {}; colFilters = {}; colFilterModes = {}; multiDeleteMode = null;
   if(name) setFileName(name);
   render();
   return true;
@@ -1529,14 +1681,23 @@ document.getElementById('btnNew').addEventListener('click', async ()=>{
     if(!ok) return;
   }
   pushHistory();
-  data = {}; path = []; navMemory = {}; colFilters = {}; colFilterModes = {}; fileHandle = null;
+  data = {}; path = []; navMemory = {}; colFilters = {}; colFilterModes = {}; multiDeleteMode = null; fileHandle = null;
   const pick = drawRandomName();
   setFileName(pick);
   render();
 });
 
 async function saveFile(forceAs){
-  const content = JSON.stringify(data, null, 2);
+  const content = JSON.stringify(
+    data,
+    (k, v) => {
+      if(k === "key" && typeof v === "string" && v.trim() === ""){
+        return undefined;
+      }
+      return v;
+    },
+    2
+  );
   let suggestedName = fileName + '.json';
 
   if(forceAs && !supportsSavePicker){
