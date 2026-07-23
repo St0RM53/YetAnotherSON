@@ -73,6 +73,10 @@
   .filter-mode::-moz-focus-inner, .filter-clear::-moz-focus-inner{border:0;padding:0;}
   .col-empty-filtered{padding:14px 6px;color:var(--text-faint);font-size:11.5px;text-align:center;}
   .col-empty{padding:24px 16px;color:var(--text-faint);font-size:12.5px;line-height:1.5;text-align:center;}
+  /* a whole column lights up as the drop target when it's empty (or when dragging over the empty
+     space below its last row) -- otherwise there would be no element there to catch the drop */
+  .col.drop-target{outline:2px dashed var(--col-accent, var(--accent));outline-offset:-3px;}
+  .col.drop-target .col-empty{background:var(--bg-row-hover);border-radius:6px;}
 
   .row-card{border:1px solid var(--border);border-left:3px solid transparent;border-radius:6px;padding:8px 9px;margin-bottom:6px;cursor:grab;background:var(--bg-panel);transition:background .12s,border-color .12s;}
   .row-card:hover{background:var(--bg-row-hover);}
@@ -178,9 +182,10 @@
   .cp-hue{width:150px;height:13px;border-radius:7px;margin-top:9px;position:relative;cursor:pointer;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);}
   .cp-huehandle{position:absolute;top:-3px;width:9px;height:19px;border:2px solid #fff;border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,.6);transform:translate(-50%,0);pointer-events:none;}
 
-  .legend{padding:6px 20px;border-bottom:1px solid var(--border);display:flex;gap:14px;flex-wrap:wrap;font-size:10.5px;color:var(--text-muted);flex-shrink:0;}
+  .legend{padding:6px 20px;border-bottom:1px solid var(--border);display:flex;gap:14px;flex-wrap:wrap;font-size:10.5px;color:var(--text-muted);flex-shrink:0;align-items:center;}
   .legend span{display:inline-flex;align-items:center;gap:5px;}
   .legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
+  .legend .legend-session{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--col-accent, var(--accent));white-space:nowrap;}
 
   .dropzone{position:fixed;inset:0;background:rgba(18,21,27,.88);z-index:80;display:none;align-items:center;justify-content:center;}
   .dropzone.show{display:flex;}
@@ -219,6 +224,7 @@
     <button class="ghost" id="btnSaveYaml">Save YAML</button>
     <button class="ghost" id="btnSaveToml">Save TOML</button>
     <div class="divider"></div>
+    <button class="ghost icon-btn" id="btnHome" title="Homepage">🏠</button>
     <button class="ghost icon-btn" id="btnAbout" title="About">ⓘ</button>
     <button class="ghost icon-btn" id="btnSettings" title="Settings">⚙</button>
   </div>
@@ -310,8 +316,8 @@
 <script>
 /* ================= app identity ================= */
 const APP_NAME = 'YetAnotherSON';
-const APP_VERSION = 'v1.0.4';
-const APP_RELEASE_DATE = '16-07-2026';
+const APP_VERSION = 'v1.1.0';
+const APP_RELEASE_DATE = '23-07-2026';
 const DEFAULT_FILE_NAMES = [
   "SON_IAM_Tired",
   "SON_Please_Compile",
@@ -496,6 +502,8 @@ let history = [];
 let future = [];
 let pendingSnapshot = null;
 let dragRef = null;
+let dragInsertAfter = false; // during a drag, true when the pointer is over the bottom half of the
+// hovered row (drop after it) and false when over the top half (drop before it)
 
 /* ================= theme + settings ================= */
 const THEME_VARS = {
@@ -753,7 +761,7 @@ function arrayToObject(arr){
   });
   return out;
 }
-function detectSummary(item){
+function detectSummary(item, idx){
   if(isObj(item)){
     const keys = Object.keys(item);
     // "key" is array-item metadata (shown in the array column's key input), not a real child
@@ -770,7 +778,9 @@ function detectSummary(item){
       }
     }
     if(typeof item.key==='string') return {text:item.key, prop:null};
-    return {text:'(untitled)', prop:null};
+    // no key and no usable scalar child -- fall back to the item's position in the array so the
+    // row is never labelled with the ambiguous "(untitled)"
+    return {text: idx!==undefined ? '[Array item '+idx+']' : '(untitled)', prop:null};
   }
   return {text:scalarToText(item), prop:null};
 }
@@ -783,6 +793,47 @@ function rebuildObjectKeys(obj, orderedEntries){
     out[key]=v;
   });
   return out;
+}
+
+// rebuilds an object with [key:value] inserted before or after refKey, preserving string-key order (a
+// drop target lands a moved property at the position the highlight showed). If refKey is absent the
+// property is appended. Returns a fresh object; the caller clears and reassigns the original.
+function insertPropAt(obj, key, value, refKey, after){
+  const out = {};
+  let inserted = false;
+  for(const [k,v] of Object.entries(obj)){
+    if(k===refKey && !after && !inserted){ out[key]=value; inserted=true; }
+    out[k]=v;
+    if(k===refKey && after && !inserted){ out[key]=value; inserted=true; }
+  }
+  if(!inserted) out[key]=value;
+  return out;
+}
+
+// sets an array item's "key" metadata, keeping it pinned as the FIRST property of the object. A
+// bare `item.key =` after a `delete item.key` re-appends it to the end, so we rebuild the object
+// in place with key at the front and the remaining properties in their original order. Mutating in
+// place (rather than replacing the object) preserves every other reference to `item` in the model.
+function setArrayItemKey(item, text){
+  const trimmed = (text||"").trim();
+  const ordered = {};
+  if(trimmed !== "") ordered.key = trimmed;
+  Object.keys(item).forEach(k=>{ if(k!=='key') ordered[k]=item[k]; });
+  Object.keys(item).forEach(k=>delete item[k]);
+  Object.assign(item, ordered);
+}
+
+// collects a value plus every object/array nested inside it, for drag-and-drop cycle prevention. A node
+// must never be dropped into a column showing itself or one of its descendants, or the data would gain
+// a cycle. Returns a Set keyed by object identity.
+function collectForbidden(value, set){
+  if(value && typeof value==='object'){
+    if(set.has(value)) return set; // guard against any pre-existing cycle
+    set.add(value);
+    if(Array.isArray(value)) value.forEach(c=>collectForbidden(c, set));
+    else Object.keys(value).forEach(k=>collectForbidden(value[k], set));
+  }
+  return set;
 }
 
 /* ================= undo / redo ================= */
@@ -902,6 +953,17 @@ function extendPathFromMemory(){
 }
 function truncateAfterEdit(colIndex){ path = path.slice(0, colIndex); }
 function pathStepAt(colIdx){ return path.length > colIdx ? path[colIdx] : undefined; }
+// after a drag removes an item from its source column, decide whether the nav path still resolves.
+// The path breaks only if the removed item was the navigated-into step at its column (i.e. it's the
+// child the path continues through). Removing a sibling leaves the path intact. For arrays, removing
+// an item above the navigated index shifts that index down by one. Returns true if the path must be
+// truncated to sourceCol (the removed item was the navigated step).
+function pathBreaksAtRemoval(sourceCol, removedKey, removedIdx){
+  const step = path[sourceCol];
+  if(removedKey === step || removedIdx === step) return true;     // removed the navigated step itself
+  if(typeof step==='number' && typeof removedIdx==='number' && removedIdx < step){ path[sourceCol] = step-1; } // array index shift
+  return false;
+}
 
 /* ================= multi-select delete ================= */
 // { colIdx, selected: Set<key|index> } — only one column can be in this mode at a time
@@ -995,12 +1057,15 @@ function render(){
   restoreScroll(scrollMap);
   updateHistoryButtons();
   updateMultiDeleteToolbar();
+  persist(); // debounced save — current doc + undo/redo stacks survive a reload/crash
 }
 
 function renderLegend(){
-  document.getElementById('legend').innerHTML = Object.keys(TYPE_LABELS).map(t=>
+  const legend = document.getElementById('legend');
+  legend.innerHTML = Object.keys(TYPE_LABELS).map(t=>
     '<span><i style="background:'+settings.colors[t]+'"></i>'+TYPE_LABELS[t]+'</span>'
-  ).join('');
+  ).join('')
+  + '<span class="legend-session" title="Session id — each tab gets its own">session: '+getSessionId().slice(0,8)+'</span>';
 }
 
 function renderBreadcrumb(){
@@ -1015,7 +1080,7 @@ function renderBreadcrumb(){
   for(let i=0;i<path.length;i++){
     const step = path[i];
     const next = node ? node[step] : undefined;
-    const label = (typeof step === 'number') ? detectSummary(next).text : String(step);
+    const label = (typeof step === 'number') ? detectSummary(next, step).text : String(step);
     const sep = document.createElement('span'); sep.className='crumb-sep'; sep.textContent='›';
     bc.appendChild(sep);
     const btn = document.createElement('button');
@@ -1188,7 +1253,7 @@ function renderObjectColumn(obj, curPath, colIdx){
   const col = document.createElement('div');
   col.className = 'col';
   col.style.setProperty('--col-accent', curPath.length===0 ? settings.colors.accent : settings.colors.object);
-  const label = curPath.length===0 ? 'Root' : (typeof curPath[curPath.length-1]==='number' ? detectSummary(obj).text : String(curPath[curPath.length-1]));
+  const label = curPath.length===0 ? 'Root' : (typeof curPath[curPath.length-1]==='number' ? detectSummary(obj, curPath[curPath.length-1]).text : String(curPath[curPath.length-1]));
   // this object's own 'key' field (if present) is redundant with the editable key box already
   // shown on the parent row that represents it — an array item's row (existing) or an
   // object-property row (added for this) — so it's hidden here to avoid two out-of-sync
@@ -1255,22 +1320,9 @@ function renderObjectColumn(obj, curPath, colIdx){
       btn.addEventListener('click', ()=> goTo(colIdx, key));
       row.appendChild(btn);
       filterEntry.valueText = btn.textContent.toLowerCase();
-      const nestedKeyInput = document.createElement('input');
-      nestedKeyInput.className = 'nested-key-input';
-      nestedKeyInput.value = typeof val.key === 'string' ? val.key : "";
-      nestedKeyInput.placeholder = 'key';
-      nestedKeyInput.addEventListener('input', ()=>{
-      const text = nestedKeyInput.value;
-      if(text.trim() === ""){
-        delete val.key;
-      }else{
-        val.key = text;
-      }
-        filterEntry.valueText = (btn.textContent + ' ' + text).toLowerCase();
-        renderBreadcrumb();
-      });
-      trackInputHistory(nestedKeyInput);
-      row.appendChild(nestedKeyInput);
+      // no nested key editor here: an object that is a child of an object already has a name
+      // (its property key, e.g. "options"), so a separate "key" field would be redundant. The
+      // "key" metadata is only meaningful for array items, which have no property name.
     }
 
     typeSel.addEventListener('change', async ()=>{
@@ -1312,20 +1364,71 @@ function renderObjectColumn(obj, curPath, colIdx){
       if(Object.keys(obj)[trueIdx] !== key){ render(); }
     });
 
-    row.addEventListener('dragstart', (e)=>{ dragRef = {containerObj:obj, key}; e.dataTransfer.effectAllowed='move'; });
-    row.addEventListener('dragover', (e)=>{ e.preventDefault(); row.style.borderTop='2px solid var(--accent)'; });
-    row.addEventListener('dragleave', ()=>{ row.style.borderTop=''; });
+    row.addEventListener('dragstart', (e)=>{
+      // forbidden = the dragged value plus everything nested inside it. A column whose container is
+      // in this set can't be a drop target, or the move would create a cycle (dropping a node into
+      // itself or one of its descendants). sourceCol is recorded so the drop handler can decide
+      // whether removing this item invalidates the nav path (it only does when the item is the
+      // navigated-into step at its own column).
+      dragRef = {kind:'prop', sourceCol:colIdx, containerObj:obj, key, forbidden:collectForbidden(obj[key], new Set())};
+      e.dataTransfer.effectAllowed='move';
+    });
+    row.addEventListener('dragover', (e)=>{
+      // never drop into a container the dragged value owns (would create a cycle). Cross-type drops
+      // (item onto an object column) are allowed here -- the drop handler derives a property key.
+      if(!dragRef || dragRef.forbidden.has(obj)) return;
+      e.preventDefault(); e.stopPropagation();
+      col.classList.remove('drop-target'); // hovering a row, not the empty-column zone
+      // split the row in two: top half lands the dragged item before this row, bottom half after.
+      // The bottom half is what makes dropping onto the *last* row possible (there's no row below
+      // it to hover) -- its borderBottom becomes the "drop at the end" indicator.
+      const rect = row.getBoundingClientRect();
+      dragInsertAfter = (e.clientY - rect.top) > rect.height/2;
+      row.style.borderTop = dragInsertAfter ? '' : '2px solid var(--accent)';
+      row.style.borderBottom = dragInsertAfter ? '2px solid var(--accent)' : '';
+    });
+    row.addEventListener('dragleave', ()=>{ row.style.borderTop=''; row.style.borderBottom=''; });
     row.addEventListener('drop', (e)=>{
-      e.preventDefault(); row.style.borderTop='';
-      if(!dragRef || dragRef.containerObj!==obj || dragRef.key===key){ dragRef=null; return; }
-      pushHistory();
-      const ents = Object.entries(obj);
-      const fromIdx = ents.findIndex(([k])=>k===dragRef.key);
-      const toIdx = ents.findIndex(([k])=>k===key);
-      const [moved] = ents.splice(fromIdx,1);
-      ents.splice(toIdx,0,moved);
-      const rebuilt = rebuildObjectKeys(obj, ents);
-      Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
+      e.preventDefault(); e.stopPropagation(); row.style.borderTop=''; row.style.borderBottom='';
+      if(!dragRef || dragRef.forbidden.has(obj)){ dragRef=null; return; }
+      if(dragRef.kind==='prop'){
+        // property -> object column (same-type)
+        const fromObj = dragRef.containerObj, fromKey = dragRef.key;
+        if(fromObj === obj){
+          // same-container reorder -- unchanged behavior
+          if(fromKey===key){ dragRef=null; return; } // dropped onto its own row
+          pushHistory();
+          const ents = Object.entries(obj);
+          const fromIdx = ents.findIndex(([k])=>k===fromKey);
+          const toIdx = ents.findIndex(([k])=>k===key);
+          const [moved] = ents.splice(fromIdx,1);
+          const insertIdx = dragInsertAfter ? toIdx + (fromIdx > toIdx ? 1 : 0) : toIdx - (fromIdx < toIdx ? 1 : 0);
+          ents.splice(insertIdx,0,moved);
+          const rebuilt = rebuildObjectKeys(obj, ents);
+          Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
+        } else {
+          // cross-column move: take the property out of its source object and insert it here
+          pushHistory();
+          const value = fromObj[fromKey];
+          delete fromObj[fromKey];
+          const newKey = uniqueKey(fromKey, Object.keys(obj));
+          const rebuilt = insertPropAt(obj, newKey, value, key, dragInsertAfter);
+          Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
+          if(pathBreaksAtRemoval(dragRef.sourceCol, fromKey)) truncateAfterEdit(dragRef.sourceCol);
+        }
+      } else {
+        // item -> object column (cross-type): turn the moved array item into a property, deriving its
+        // key the same way paste-as-property does
+        pushHistory();
+        const fromArr = dragRef.containerArr, fromIdx = dragRef.idx;
+        const value = fromArr[fromIdx];
+        fromArr.splice(fromIdx, 1);
+        const baseName = (isObj(value) && typeof value.key==='string' && value.key.trim()!=='') ? value.key : 'item';
+        const newKey = uniqueKey(slug(baseName), Object.keys(obj));
+        const rebuilt = insertPropAt(obj, newKey, value, key, dragInsertAfter);
+        Object.keys(obj).forEach(k=>delete obj[k]); Object.assign(obj, rebuilt);
+        if(pathBreaksAtRemoval(dragRef.sourceCol, undefined, fromIdx)) truncateAfterEdit(dragRef.sourceCol);
+      }
       dragRef = null; render();
     });
 
@@ -1358,6 +1461,37 @@ function renderObjectColumn(obj, curPath, colIdx){
     });
 
     body.appendChild(row);
+  });
+
+  // whole-column drop zone: catches drops on an empty column or on the empty space below the last
+  // row (neither of which has a row to catch the event). Rows stopPropagation on their own dragover/
+  // drop, so this fires only for the empty areas. It always appends to the end of the object.
+  body.addEventListener('dragover', (e)=>{
+    if(!dragRef || dragRef.forbidden.has(obj)) return; // cross-type (item->object) is allowed here
+    e.preventDefault(); e.stopPropagation();
+    col.classList.add('drop-target');
+  });
+  body.addEventListener('dragleave', ()=>{ col.classList.remove('drop-target'); });
+  body.addEventListener('drop', (e)=>{
+    e.preventDefault(); e.stopPropagation(); col.classList.remove('drop-target');
+    if(!dragRef || dragRef.forbidden.has(obj)){ dragRef=null; return; }
+    pushHistory();
+    let value;
+    if(dragRef.kind==='prop'){
+      value = dragRef.containerObj[dragRef.key];
+      delete dragRef.containerObj[dragRef.key];
+      const newKey = uniqueKey(dragRef.key, Object.keys(obj));
+      obj[newKey] = value;
+      if(pathBreaksAtRemoval(dragRef.sourceCol, dragRef.key)) truncateAfterEdit(dragRef.sourceCol);
+    } else {
+      value = dragRef.containerArr[dragRef.idx];
+      dragRef.containerArr.splice(dragRef.idx, 1);
+      const baseName = (isObj(value) && typeof value.key==='string' && value.key.trim()!=='') ? value.key : 'item';
+      const newKey = uniqueKey(slug(baseName), Object.keys(obj));
+      obj[newKey] = value;
+      if(pathBreaksAtRemoval(dragRef.sourceCol, undefined, dragRef.idx)) truncateAfterEdit(dragRef.sourceCol);
+    }
+    dragRef = null; render();
   });
 
   setupColumnFilter(col, colIdx, body, ()=>filterRows, 'No properties match your filter.', 'properties');
@@ -1431,26 +1565,24 @@ function renderArrayColumn(arr, curPath, colIdx){
     top.appendChild(typeSel);
 
     if(isObj(item)){
-      const summary = detectSummary(item);
-      const hasAddr = typeof item.addr === 'string';
+      const summary = detectSummary(item, idx);
       const titleInput = document.createElement('input');
       titleInput.className = 'title-input'; titleInput.value = summary.text; titleInput.placeholder = '(untitled)';
+      // display-only summary of the auto-detected child: readOnly stops typing, and pointer-events
+      // none stops the field from ever taking focus/caret (so it never looks editable). Clicks pass
+      // through to the row, whose click handler navigates in so the detected child can be edited.
+      titleInput.readOnly = true; titleInput.style.pointerEvents = 'none';
       top.appendChild(titleInput);
-      if(hasAddr){ const badge=document.createElement('span'); badge.className='addr-badge'; badge.textContent=item.addr; top.appendChild(badge); }
       row.appendChild(top);
       filterEntry.nameText = (item.key||String(idx)).toLowerCase();
       filterEntry.valueText = summary.text.toLowerCase();
       
       const keyInput = document.createElement('input');
-      keyInput.className = 'key-input'; keyInput.value = typeof item.key === 'string' ? item.key : ''; keyInput.placeholder = 'key';
+      keyInput.className = 'key-input'; keyInput.value = typeof item.key === 'string' ? item.key : ''; keyInput.placeholder = '[key]';
       keyInput.addEventListener('focus', ()=>{ if(pathStepAt(colIdx) !== idx) goTo(colIdx, idx); });
       keyInput.addEventListener('input', ()=>{
         const text = keyInput.value;
-        if(text.trim() === ""){
-          delete item.key;
-        } else {
-          item.key = text;
-        }
+        setArrayItemKey(item, text);
         filterEntry.nameText = text.toLowerCase();
         renderBreadcrumb();
       });
@@ -1491,17 +1623,58 @@ function renderArrayColumn(arr, curPath, colIdx){
       pushHistory(); arr[idx] = convertedValue(newType, item); if(pathStepAt(colIdx) === idx) truncateAfterEdit(colIdx); render();
     });
 
-    row.addEventListener('dragstart', ()=>{ dragRef = {containerArr:arr, idx}; });
-    row.addEventListener('dragover', (e)=>{ e.preventDefault(); row.style.borderTop='2px solid #5ec8d8'; });
-    row.addEventListener('dragleave', ()=>{ row.style.borderTop=''; });
+    row.addEventListener('dragstart', ()=>{
+      dragRef = {kind:'item', sourceCol:colIdx, containerArr:arr, idx, forbidden:collectForbidden(arr[idx], new Set())};
+    });
+    row.addEventListener('dragover', (e)=>{
+      // never drop into a container the dragged value owns (would create a cycle). Cross-type drops
+      // (property onto an array column) are allowed here -- the drop handler inserts the value as an
+      // item. The bottom half of the last row is the "drop at the end" indicator.
+      if(!dragRef || dragRef.forbidden.has(arr)) return;
+      e.preventDefault(); e.stopPropagation();
+      col.classList.remove('drop-target'); // hovering a row, not the empty-column zone
+      const rect = row.getBoundingClientRect();
+      dragInsertAfter = (e.clientY - rect.top) > rect.height/2;
+      row.style.borderTop = dragInsertAfter ? '' : '2px solid #5ec8d8';
+      row.style.borderBottom = dragInsertAfter ? '2px solid #5ec8d8' : '';
+    });
+    row.addEventListener('dragleave', ()=>{ row.style.borderTop=''; row.style.borderBottom=''; });
     row.addEventListener('drop', (e)=>{
-      e.preventDefault(); row.style.borderTop='';
-      if(!dragRef || dragRef.containerArr!==arr || dragRef.idx===idx){ dragRef=null; return; }
-      pushHistory();
-      const [moved] = arr.splice(dragRef.idx,1);
-      const insertIdx = idx > dragRef.idx ? idx-1 : idx;
-      arr.splice(insertIdx,0,moved);
-      dragRef = null; truncateAfterEdit(colIdx); render();
+      e.preventDefault(); e.stopPropagation(); row.style.borderTop=''; row.style.borderBottom='';
+      if(!dragRef || dragRef.forbidden.has(arr)){ dragRef=null; return; }
+      if(dragRef.kind==='item'){
+        // item -> array column (same-type)
+        const fromArr = dragRef.containerArr, fromIdx = dragRef.idx;
+        if(fromArr === arr){
+          // same-container reorder -- unchanged behavior
+          if(fromIdx===idx){ dragRef=null; return; } // dropped onto its own row
+          pushHistory();
+          const [moved] = arr.splice(fromIdx,1);
+          // target index shifts down by 1 when the source was above it; then +1 more for drop-after
+          const targetIdx = idx > fromIdx ? idx-1 : idx;
+          arr.splice(dragInsertAfter ? targetIdx+1 : targetIdx, 0, moved);
+          truncateAfterEdit(colIdx); // reordering shifts indices, which can invalidate the deeper path
+        } else {
+          // cross-column move: take the item out of its source array and insert it here
+          pushHistory();
+          const value = fromArr[fromIdx];
+          fromArr.splice(fromIdx, 1);
+          // source and target are different arrays, so target indices are unaffected by the removal
+          arr.splice(dragInsertAfter ? idx+1 : idx, 0, value);
+          if(pathBreaksAtRemoval(dragRef.sourceCol, undefined, fromIdx)) truncateAfterEdit(dragRef.sourceCol);
+        }
+      } else {
+        // property -> array column (cross-type): turn the moved property's value into an array item,
+        // deduping its 'key' the same way paste-as-item does
+        pushHistory();
+        const fromObj = dragRef.containerObj, fromKey = dragRef.key;
+        const value = fromObj[fromKey];
+        delete fromObj[fromKey];
+        if(isObj(value) && typeof value.key==='string'){ value.key = uniqueKey(value.key+'_copy', arr.filter(isObj).map(x=>x.key)); }
+        arr.splice(dragInsertAfter ? idx+1 : idx, 0, value);
+        if(pathBreaksAtRemoval(dragRef.sourceCol, fromKey)) truncateAfterEdit(dragRef.sourceCol);
+      }
+      dragRef = null; render();
     });
 
     row.addEventListener('contextmenu', (e)=>{
@@ -1530,6 +1703,35 @@ function renderArrayColumn(arr, curPath, colIdx){
     });
 
     body.appendChild(row);
+  });
+
+  // whole-column drop zone: catches drops on an empty column or on the empty space below the last
+  // row. Rows stopPropagation on their own dragover/drop, so this fires only for the empty areas. It
+  // always appends to the end of the array.
+  body.addEventListener('dragover', (e)=>{
+    if(!dragRef || dragRef.forbidden.has(arr)) return; // cross-type (property->array) is allowed here
+    e.preventDefault(); e.stopPropagation();
+    col.classList.add('drop-target');
+  });
+  body.addEventListener('dragleave', ()=>{ col.classList.remove('drop-target'); });
+  body.addEventListener('drop', (e)=>{
+    e.preventDefault(); e.stopPropagation(); col.classList.remove('drop-target');
+    if(!dragRef || dragRef.forbidden.has(arr)){ dragRef=null; return; }
+    pushHistory();
+    let value;
+    if(dragRef.kind==='item'){
+      value = dragRef.containerArr[dragRef.idx];
+      dragRef.containerArr.splice(dragRef.idx, 1);
+      arr.push(value);
+      if(pathBreaksAtRemoval(dragRef.sourceCol, undefined, dragRef.idx)) truncateAfterEdit(dragRef.sourceCol);
+    } else {
+      value = dragRef.containerObj[dragRef.key];
+      delete dragRef.containerObj[dragRef.key];
+      if(isObj(value) && typeof value.key==='string'){ value.key = uniqueKey(value.key+'_copy', arr.filter(isObj).map(x=>x.key)); }
+      arr.push(value);
+      if(pathBreaksAtRemoval(dragRef.sourceCol, dragRef.key)) truncateAfterEdit(dragRef.sourceCol);
+    }
+    dragRef = null; render();
   });
 
   setupColumnFilter(col, colIdx, body, ()=>filterRows, 'No items match your filter.', 'items');
@@ -1689,6 +1891,8 @@ document.getElementById('btnNew').addEventListener('click', async ()=>{
   data = {}; path = []; navMemory = {}; colFilters = {}; colFilterModes = {}; multiDeleteMode = null; fileHandle = null;
   const pick = drawRandomName();
   setFileName(pick);
+  try{ localStorage.removeItem(LS_STATE+'.'+getSessionId()); localStorage.removeItem(LS_HISTORY+'.'+getSessionId()); }catch(e){}
+  history = []; future = []; updateHistoryButtons();
   render();
 });
 
@@ -1870,7 +2074,9 @@ function renderSettingsPanel(){
 
   const accentRow = document.createElement('div'); accentRow.className = 'color-row';
   accentRow.innerHTML = '<label>Accent (nav / borders / selection)</label>';
-  const accentPicker = makeColorPicker(settings.colors.accent, (hex)=>{ settings.colors.accent = hex; applyTheme(); });
+  // accent also drives each column's inline --col-accent (set at render time), so it needs a full
+  // render() on top of applyTheme() to refresh the ROOT/object/array column labels live
+  const accentPicker = makeColorPicker(settings.colors.accent, (hex)=>{ settings.colors.accent = hex; applyTheme(); render(); persist(); });
   accentRow.appendChild(accentPicker);
   body.appendChild(accentRow);
 
@@ -1886,7 +2092,7 @@ function renderSettingsPanel(){
   Object.keys(INTERFACE_COLOR_LABELS).forEach(key=>{
     const row = document.createElement('div'); row.className = 'color-row';
     row.innerHTML = `<label>${INTERFACE_COLOR_LABELS[key]}</label>`;
-    const picker = makeColorPicker(settings.colors[key], (hex)=>{ settings.colors[key] = hex; applyTheme(); });
+    const picker = makeColorPicker(settings.colors[key], (hex)=>{ settings.colors[key] = hex; applyTheme(); persist(); });
     row.appendChild(picker);
     body.appendChild(row);
   });
@@ -1898,7 +2104,7 @@ function renderSettingsPanel(){
   Object.keys(TYPE_LABELS).forEach(t=>{
     const row = document.createElement('div'); row.className = 'color-row';
     row.innerHTML = `<label>${TYPE_LABELS[t]} (${t==='list' ? 'array' : t})</label>`;
-    const picker = makeColorPicker(settings.colors[t], (hex)=>{ settings.colors[t] = hex; applyTheme(); render(); });
+    const picker = makeColorPicker(settings.colors[t], (hex)=>{ settings.colors[t] = hex; applyTheme(); persist(); });
     row.appendChild(picker);
     body.appendChild(row);
   });
@@ -1908,10 +2114,18 @@ function renderSettingsPanel(){
   body.appendChild(secBehavior);
   const toggleRow = document.createElement('div'); toggleRow.className = 'toggle-row';
   toggleRow.innerHTML = `<input type="checkbox" id="prefillToggle" ${settings.prefillKeyTitle?'checked':''}><label for="prefillToggle">Prefill new list items with key &amp; title</label>`;
-  toggleRow.querySelector('#prefillToggle').addEventListener('change', (e)=>{ settings.prefillKeyTitle = e.target.checked; });
+  toggleRow.querySelector('#prefillToggle').addEventListener('change', (e)=>{ settings.prefillKeyTitle = e.target.checked; persist(); });
   body.appendChild(toggleRow);
 }
 const aboutOverlay = document.getElementById('aboutOverlay');
+document.getElementById('btnHome').addEventListener('click', ()=>{
+  window.open('https://st0rm53.github.io/YetAnotherSON/', '_blank', 'noopener,noreferrer');
+});
+// middle-click should also open the homepage (left click is handled above). auxclick fires on
+// non-primary buttons without disturbing the normal click behavior.
+document.getElementById('btnHome').addEventListener('auxclick', (e)=>{
+  if(e.button === 1){ e.preventDefault(); window.open('https://st0rm53.github.io/YetAnotherSON/', '_blank', 'noopener,noreferrer'); }
+});
 document.getElementById('btnAbout').addEventListener('click', ()=>{
   document.getElementById('aboutTitle').textContent = APP_NAME;
   document.getElementById('aboutVersion').textContent = APP_VERSION;
@@ -1957,9 +2171,76 @@ document.getElementById('settingsFileInput').addEventListener('change', (e)=>{
 /* keep settings dock from being closed by the app-wide "click closes popovers" listener */
 settingsDock.addEventListener('click', (e)=>e.stopPropagation());
 
+/* ================= persistence ================= */
+// saves the working state to localStorage so a reload/restore brings the user back to where they
+// left off. The document + nav state go in one key and the undo/redo stacks in another, so a quota
+// error on the (potentially large) history never costs the user their current document. Persistence
+// is debounced and fired from render() — the one function every mutation funnels through.
+//
+// Each tab gets its own independent session: a random id lives in sessionStorage (which is scoped
+// per-tab and survives reloads) and the localStorage keys are namespaced with it — so two tabs open
+// at once no longer stomp on each other's documents or undo history.
+const LS_STATE = 'yetAnotherSON.state';
+const LS_HISTORY = 'yetAnotherSON.history';
+const LS_SETTINGS = 'yetAnotherSON.settings'; // user preferences — shared across all tabs/sessions
+let persistTimer = null;
+let sessionId = null;
+function getSessionId(){
+  if(sessionId) return sessionId;
+  sessionId = sessionStorage.getItem('yetAnotherSON.session');
+  if(!sessionId){
+    sessionId = (crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2,10);
+    sessionStorage.setItem('yetAnotherSON.session', sessionId);
+  }
+  return sessionId;
+}
+function persist(){
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(()=>{
+    const key = getSessionId();
+    try{
+      localStorage.setItem(LS_STATE+'.'+key, JSON.stringify({data, path, fileName, navMemory}));
+    }catch(e){ /* storage full / disabled — keep working, just don't persist */ }
+    try{
+      localStorage.setItem(LS_HISTORY+'.'+key, JSON.stringify({history, future}));
+    }catch(e){ /* history can be large; if it doesn't fit, the document state above still saved */ }
+    try{
+      localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+    }catch(e){ /* storage full / disabled — keep working, just don't persist */ }
+  }, 200);
+}
+function loadPersistedState(){
+  try{
+    const key = getSessionId();
+    const s = JSON.parse(localStorage.getItem(LS_STATE+'.'+key)||'null');
+    if(s && s.data){ data = s.data; }
+    if(s && Array.isArray(s.path)){ path = s.path; }
+    if(s && typeof s.fileName==='string'){ fileName = s.fileName; setFileName(fileName); }
+    if(s && s.navMemory && typeof s.navMemory==='object'){ navMemory = s.navMemory; }
+    const h = JSON.parse(localStorage.getItem(LS_HISTORY+'.'+key)||'null');
+    if(h && Array.isArray(h.history)){ history = h.history; }
+    if(h && Array.isArray(h.future)){ future = h.future; }
+    updateHistoryButtons();
+  }catch(e){ /* corrupt/unreadable storage — ignore and start fresh */ }
+}
+// settings are merged over DEFAULT_SETTINGS so that any new setting a future version adds still gets its
+// default value even if an older saved blob doesn't contain it.
+function loadPersistedSettings(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(LS_SETTINGS)||'null');
+    if(!saved) return;
+    if(typeof saved.theme==='string') settings.theme = saved.theme;
+    if(typeof saved.prefillKeyTitle==='boolean') settings.prefillKeyTitle = saved.prefillKeyTitle;
+    if(saved.colors && typeof saved.colors==='object') settings.colors = Object.assign(settings.colors, saved.colors);
+  }catch(e){ /* corrupt/unreadable storage — ignore and keep defaults */ }
+}
+
 /* ================= init ================= */
+loadPersistedSettings(); // before applyTheme so the saved theme/colours are used on first paint
 applyTheme();
-setFileName(APP_NAME);
+loadPersistedState();
+setFileName(fileName);
 render();
 </script>
 </body>
