@@ -28,17 +28,18 @@ Nobody i found had combined the last two: real column-based navigation *with* re
 
 - Miller-column navigation for arbitrarily nested JSON — click into any object or array to open the next column
 - Full inline editing: rename keys, edit values, add/delete/duplicate/reorder properties and items (drag-and-drop, right-click menu, resizable columns)
+- Cross-column drag-and-drop — move a property or item to any other column (including across types: a property into an array becomes an item, and vice versa), with cycle prevention so a node can never be dropped into its own subtree
 - Convert any value between String / Number / Boolean / Null / Array / Object, with data preserved wherever the conversion allows it
 - Undo/redo, a raw-JSON view with syntax highlighting, and a searchable breadcrumb trail
+- Automatic session persistence — the current document, navigation position, and full undo/redo history are saved to localStorage as you work, so reloading the page or recovering from a crash restores exactly where you left off; each browser tab gets its own independent session
 - Per column filtering; by name, value, or both
 - Real file Save / Save As (via the File System Access API where supported), plus JSON/YAML/TOML export
-- Fully customizable color palette and light/dark theme, saved and restored as a plain settings file
+- Fully customizable color palette and light/dark theme, auto-saved to localStorage (and still exportable/importable as a plain settings file)
 - Optional experimental YAML/TOML support, lazily loaded from a CDN only when you actually open or save one of those formats — never on startup, never for JSON
 
 ## Screenshot
 
-<img width="2060" height="1193" alt="Screenshot 2026-07-13 at 23-23-55 YetAnotherSON — YetAnotherSON" src="https://github.com/user-attachments/assets/789cb220-4fa6-4ba0-834b-de4fc0553d71" />
-
+<img width="1974" height="1139" alt="image" src="https://github.com/user-attachments/assets/55dc75bf-a5fd-466c-9f1e-3abda6fb731f" />
 
 ## Usage
 
